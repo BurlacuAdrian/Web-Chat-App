@@ -1,34 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Link,useNavigate } from 'react-router-dom'
+import axiosInstance from './axiosConfig';
 
 
 function LoginPage({setLoggedIn}) {
   const navigate = useNavigate()
 
- async function login(){
-    const username = document.querySelector('#username-input').value
-    const password = document.querySelector('#password-input').value
-
+  async function login() {
+    const username = document.querySelector('#username-input').value;
+    const password = document.querySelector('#password-input').value;
+  
     try {
-      const response = await fetch("http://localhost:8001/login", {
-        method: 'POST',
+      const response = await axiosInstance.post("/login", {
+        username,
+        password
+      }, {
         headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      })
-
+          'Content-Type': 'application/json'
+        }
+      });
+  
       if (response.status === 200) {
-        localStorage.setItem("username",username)
-        setLoggedIn(true)
+        localStorage.setItem("username", username);
+        // setLoggedIn(true);
         navigate('/');
       } else {
-        console.error('Login failed')
+        console.error('Login failed');
       }
     } catch (error) {
-      console.error('API call error:', error)
+      console.error('API call error:', error);
     }
   }
+  
 
 
   return (
