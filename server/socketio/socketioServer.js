@@ -45,19 +45,25 @@ io.on('connection', socket => {
   })
 
   socket.on("send-mesage", async (messageObj) => {
-    const { sender, receiver, text } = messageObj
-    const room_id = getConversationRoomId(sender,receiver)
+    const { sender, receiver, text, type} = messageObj
+    //we assume default is group
+    let room_id = receiver
+    if(type=="user")
+      room_id = getConversationRoomId(sender,receiver)
+
+    //TODO this sends to all connected clients, including the sender
     io.to(room_id).emit('receive-message', {
       sender,
       receiver,
       room_id,
       text,
+      type,
       time_sent: getCurrentTimeString()
     })
     // console.log(`${sender} sent a message to ${receiver} containing ${text}`)
 
     const result = await storeMessage({sender, receiver, text})
-    console.log(`Message from ${sender} to ${receiver}`+ (result==true ? "sent" : "failed"))
+    console.log(`${type} Message from ${sender} to ${receiver} `+ (result==true ? "sent" : "failed"))
 
   })
 

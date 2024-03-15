@@ -18,6 +18,9 @@ export default function ChatPage({ setLoggedIn }) {
   const socketRef = useRef(null)
   const selectedConversation = useRef({id:null})
   const [inConversationWith, setInConversationWith] = useState(null)
+  const [newGroupNameInputText, setNewGroupNameInputText] = useState('')
+  const [groupOptionsModal, setGroupOptionsModal] = useState(false)
+  const [addFriendByUsernameInputText, setAddFriendByUsernameInputText] = useState('')
 
   /*** Socket handling ***/
 
@@ -95,6 +98,7 @@ export default function ChatPage({ setLoggedIn }) {
       sender: username,
       receiver: selectedConversation.current.id,
       text: messageInputText,
+      type: selectedConversation.current.type
     })
 
     setMessageInputText('');
@@ -127,7 +131,7 @@ export default function ChatPage({ setLoggedIn }) {
 
 
 
-  /*** API intercation ***/
+  /*** API interaction ***/
 
   const getMessagesFromAPI = async () => {
     const response = await axiosInstance.get(`/messages/${selectedConversation.current.id}`)
@@ -146,11 +150,30 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.put(`/interaction/${selectedConversation.current.id}`)
   }
 
+  const updateGroupInteraction = async () => {
+    const response = await axiosInstance.put(`/group/${selectedConversation.current.id}`)
+  }
+
+  const createGroup = async (groupName) => {
+    const response = await axiosInstance.post('/group',{
+      group_name : groupName,
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    const groupId = await response.data.group_id
+    return groupId
+  }
+
+  const addFriendToGroup = async (friendName) =>{
+    const response = await axiosInstance.post(`/group/${selectedConversation.current.id}/${friendName}`)
+  }
+
   const openConversation = (conversationId, conversationType) => {
     setNewGroupModal(false)
     setNewMessageModal(false)
     
-    // setMessages(conversations.filter(conversationElement => conversationElement.id == conversationId)[0].messages)
     let room_id
 
     if(conversationType==="user"){
@@ -163,7 +186,11 @@ export default function ChatPage({ setLoggedIn }) {
     selectedConversation.current = { id: conversationId, type: conversationType, room_id: conversationId }
     setInConversationWith(conversationId)
 
-    updateInteractions()
+    if(conversationType==="user"){
+      updateInteractions()
+    }else {//GROUP
+      updateGroupInteraction()
+    }
 
     getMessagesFromAPI()
 
@@ -173,7 +200,7 @@ export default function ChatPage({ setLoggedIn }) {
     })
   }
 
-  /*** API intercation end***/
+  /*** API interaction end***/
 
 
 
@@ -207,6 +234,23 @@ export default function ChatPage({ setLoggedIn }) {
       sendButtonRef.current.click()
     }
   };
+
+  const handleCreateNewGroupButton = async () => {
+    const groupName = newGroupNameInputText
+    setNewGroupNameInputText('')
+    const groupId = await createGroup(groupName)
+    openConversation(groupId, "group")
+  }
+
+  const handleGroupOptionsModal = () => {
+    setGroupOptionsModal(oldValue=>!oldValue)
+  }
+
+  const handleAddFriendButton = () => {
+    setGroupOptionsModal(false)
+    addFriendToGroup(addFriendByUsernameInputText)
+    setAddFriendByUsernameInputText('')
+  }
 
   /*** Modal and button handling end ***/
 
@@ -255,6 +299,7 @@ export default function ChatPage({ setLoggedIn }) {
         <div className='flex-grow'>Select a conversation</div> :
           <div className='flex-grow'>
             {`Entered convo ${selectedConversation.current.id} of type ${selectedConversation.current.type} with id ${selectedConversation.current.id}`}
+            <button className='bg-blue-100 p-4' onClick={handleGroupOptionsModal}>Group options</button>
             {messages.map((messageElement) => {
               return (
                 <div>
@@ -310,11 +355,26 @@ export default function ChatPage({ setLoggedIn }) {
       {
         newGroupModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4'>
           <span className=''>Create a new group </span>
-          <input className='w-3/5' placeholder='Enter a group name'></input>
+          <input className='w-3/5' placeholder='Enter a group name' value={newGroupNameInputText}
+            onChange={(e) => setNewGroupNameInputText(e.target.value)}></input>
           <span>Add your friends!</span>
           <input className='w-3/5' placeholder='Enter a username or full name'></input>
           <div className="bg-blue-100 w-3/5 h-1/2"></div>
+          <br/>
+          <button onClick={handleCreateNewGroupButton}>Create group</button>
+          <br/>
           <button onClick={handleNewGroupModal}>Cancel</button>
+        </div>
+      }
+
+      {/* group options modal */}
+      {
+        groupOptionsModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4'>
+          <input placeholder="Enter a friend's username" value={addFriendByUsernameInputText} onChange={(e) => setAddFriendByUsernameInputText(e.target.value)}></input>
+          <br/>
+          <button onClick={handleAddFriendButton}>Add friend</button>
+          <br/>
+          <button onClick={handleGroupOptionsModal}>Cancel</button>
         </div>
       }
 
