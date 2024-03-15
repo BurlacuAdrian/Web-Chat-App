@@ -1,5 +1,7 @@
 import { db } from '../dbconfig.js'
 import { Sequelize } from 'sequelize';
+import User from './User.js';
+import Group from './Group.js';
 
 const GroupMembership = db.define('GroupMembership', {
   id: {
@@ -15,7 +17,7 @@ const GroupMembership = db.define('GroupMembership', {
   },
   participant: {
     type: Sequelize.STRING,
-    allowNull: true,
+    allowNull: false,
   }, 
   last_checked: {
     type: Sequelize.DATE,
@@ -29,5 +31,7 @@ const GroupMembership = db.define('GroupMembership', {
   }
 })
 
+User.belongsToMany(Group,{through:"GroupMembership",foreignKey:"participant"})
+Group.belongsToMany(User,{through:"GroupMembership",foreignKey:"group_id"})
 
 export default GroupMembership

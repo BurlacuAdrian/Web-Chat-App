@@ -138,67 +138,135 @@ API.get('/conversations', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username;
 
   try {
-    const userAsParticipantArray = await InteractionLog.findAll({
-      where: {
-        participant: username
-      },
-      attributes: ['conversation_with']
-    });
+    const [users, usersMeta] = await db.query({
+      query: `
+    SELECT 
+  u.display_name, 
+  u.username, 
+  COUNT(m.time_sent) AS unread, 
+  (
+    SELECT 
+      \`text\` 
+    FROM 
+      message 
+    WHERE 
+      (
+        sender = u.username 
+        AND receiver = ?
+      ) 
+      OR (
+        sender = ? 
+        AND receiver = u.username
+      ) 
+    ORDER BY 
+      time_sent DESC 
+    LIMIT 
+      1
+  ) AS last_message 
+FROM 
+  user u 
+  LEFT JOIN message m ON (
+    u.username = m.sender 
+    AND m.time_sent > (
+      SELECT 
+        last_checked 
+      FROM 
+        interactionlog 
+      WHERE 
+        conversation_with = u.username 
+        AND participant = ?
+    )
+  ) 
+WHERE 
+  u.username IN (
+    SELECT 
+      participant AS username 
+    FROM 
+      interactionlog 
+    WHERE 
+      conversation_with = ? 
+    UNION 
+    SELECT 
+      conversation_with AS username 
+    FROM 
+      interactionlog 
+    WHERE 
+      participant = ?
+  ) 
+GROUP BY 
+  u.display_name, 
+  u.username;
 
+  `, values: [username, username, username, username, username]
+    })
 
-    const userAsReceiverArray = await InteractionLog.findAll({
-      where: {
-        conversation_with: username
-      },
-      attributes: ['participant']
-    });
-
-    // Extract conversation_with values
-    const userAsParticipantValues = userAsParticipantArray.map(conversation => conversation.conversation_with);
-    const userAsReceiverValues = userAsReceiverArray.map(conversation => conversation.participant);
-
-    // console.log(userAsParticipantValues)
-    // console.log(userAsReceiverValues)
-
-    //Concatenate
-    const userValuesPossibleDuplicates = userAsParticipantValues.concat(userAsReceiverValues)
-
-    //Remove duplicates
-    const userValues = Array.from(new Set(userValuesPossibleDuplicates))
-
-    // console.log(userValues)
-
-    const usersPayload = userValues.map(usernameElement => {
+    const usersPayload = users.map(userElement => {
       return {
-        id: usernameElement,
+        id: userElement.username,
         type: "user",
-        display_name: usernameElement, //TODO
-        last_message: 'last message', //TODO
-        unread: 7, //TODO
+        display_name: userElement.display_name,
+        last_message: userElement.last_message,
+        unread: userElement.unread,
       }
     })
 
-    //TODO search in group membership also
+    const [groups, groupsMeta] = await db.query({
+      query:
+        `
+        SELECT 
+        g.group_name, 
+        g.group_id, 
+        COUNT(m.time_sent) AS unread, 
+        (
+          SELECT 
+            \`text\` 
+          FROM 
+            message 
+          WHERE 
+            receiver = g.group_id
+          ORDER BY 
+            time_sent DESC 
+          LIMIT 
+            1
+        ) AS last_message 
+      FROM 
+        \`group\` g 
+        LEFT JOIN message m ON m.receiver = g.group_id 
+        AND m.time_sent > (
+          SELECT 
+            last_checked 
+          FROM 
+            groupmembership 
+          WHERE 
+            participant = ?
+        ) 
+      WHERE 
+        g.group_id IN (
+          SELECT 
+            group_id 
+          FROM 
+            groupmembership gm 
+          WHERE 
+            gm.participant = ?
+        ) 
+      GROUP BY 
+        g.group_name, 
+        g.group_id;
 
-    const groups = await GroupMembership.findAll({where:{
-      participant : username
-    }})
+      `, values: [username,username]
+    })
 
     const groupsPayload = groups.map(groupElement => {
       return {
         id: groupElement.group_id,
         type: "group",
-        display_name: groupElement.group_id,//TODO
-        last_message: 'last message', //TODO
-        unread: 7, //TODO
+        display_name: groupElement.group_name,
+        last_message: groupElement.last_message,
+        unread: groupElement.unread,
       }
     })
 
-    console.log(JSON.parse(JSON.stringify(groups)))
-
     const payload = usersPayload.concat(groupsPayload)
-
-    //TODO get last message and number of unread messages for each conversation
 
     res.status(200).json(payload);
   } catch (error) {
@@ -303,7 +371,7 @@ API.put('/group/:group_id', verifyJWTMiddleware, async (req, res) => {
   try {
     await GroupMembership.update({
       last_checked: currentTimestamp
-    },{
+    }, {
       where: {
         group_id,
         participant: username,

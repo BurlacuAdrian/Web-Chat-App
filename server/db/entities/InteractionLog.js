@@ -1,5 +1,6 @@
 import { db } from '../dbconfig.js'
 import { Sequelize } from 'sequelize';
+import User from './User.js';
 
 const InteractionLog = db.define('InteractionLog', {
   conversation_with: {
@@ -9,7 +10,7 @@ const InteractionLog = db.define('InteractionLog', {
   },
   participant: {
     type: Sequelize.STRING,
-    allowNull: true,
+    allowNull: false,
     primaryKey:true,
   }, 
   last_checked: {
@@ -19,5 +20,7 @@ const InteractionLog = db.define('InteractionLog', {
   },
 })
 
+User.belongsToMany(User,{through:"InteractionLog", as: "conversation_with", foreignKey:"username"})
+User.belongsToMany(User,{through:"InteractionLog", as: "participant", foreignKey:"username"})
 
 export default InteractionLog
