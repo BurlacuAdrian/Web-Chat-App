@@ -3,10 +3,12 @@ import bcrypt from 'bcrypt'
 import env from 'dotenv'
 import jwt from 'jsonwebtoken'
 import cookieParser from 'cookie-parser'
-import { Sequelize, Op } from 'sequelize'
+import { Sequelize, Op, where } from 'sequelize'
 import { verifyJWTMiddleware } from './middlewares.js'
 import cors from 'cors'
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'
+import sharp from 'sharp'
+import multer from 'multer'
 
 // Database entities
 import { db, createDataBaseConnection } from '../db/dbconfig.js'
@@ -23,6 +25,9 @@ await db.sync({ force: false })
 
 env.config('../')
 const JWT_SECRET = process.env.JWT_SECRET
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 const apiRouter = express.Router()
 apiRouter.use(express.json())
@@ -43,7 +48,7 @@ API.get('/protected', verifyJWTMiddleware, (req, res) => {
 })
 
 API.post('/signup', async (req, res) => {
-  const { username, display_name, password } = req.body
+  let { username, display_name, password } = req.body
 
   if (display_name == null)
     display_name = username
@@ -51,7 +56,7 @@ API.post('/signup', async (req, res) => {
   try {
     const salt = await bcrypt.genSalt(10)
     const password_hash = await bcrypt.hash(password, salt)
-    let id = await User.create({ username, display_name, password_hash })
+    await User.create({ username, display_name, password_hash })
 
     jwt.sign({ username }, JWT_SECRET, { expiresIn: '1d' }, (err, token) => {
       if (err) {
@@ -59,7 +64,7 @@ API.post('/signup', async (req, res) => {
         return res.status(500).json({ error: 'Error signing JWT token' });
       }
 
-      res.cookie(('token', token, { sameSite: 'none', secure: true })).status(200).json({ username, user_id: id })
+      res.cookie('token', token, { sameSite: 'none', secure: true }).status(200).json({ username })
     })
 
   } catch (error) {
@@ -253,7 +258,7 @@ GROUP BY
         g.group_name, 
         g.group_id;
 
-      `, values: [username,username]
+      `, values: [username, username]
     })
 
     const groupsPayload = groups.map(groupElement => {
@@ -384,10 +389,109 @@ API.put('/group/:group_id', verifyJWTMiddleware, async (req, res) => {
   }
 })
 
+API.put('/profile_picture', verifyJWTMiddleware, upload.single('profile_picture'), async (req, res) => {
+  try {
 
+    const username = req.verified.username
 
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' })
+    }
 
+    const file = req.file
+    const imageData = file.buffer;
 
+    const resizedImageData = await sharp(imageData)
+      .resize({ width: 400, height: 400, fit: 'cover' })
+      .toBuffer();
+
+    await User.update({profile_picture: resizedImageData},{where:{
+      username
+    }})
+
+    res.status(201).json("Success")
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Internal Server Error' })
+  }
+});
+
+API.get('/profile_picture/:username', async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    const user = await User.findOne({ where: { username } });
+
+    if (!user || user?.profile_picture==null) {
+      return res.status(404).send(null)
+    }
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.status(200).send(user.profile_picture);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+API.delete('/profile_picture', verifyJWTMiddleware,async (req, res) => {
+  try {
+    const username = req.verified.username
+
+    await User.update({profile_picture:null},{ where: { username } });
+
+    res.status(200).json("Success");
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+API.put('/group_picture/:group_id', verifyJWTMiddleware, upload.single('group_picture'), async (req, res) => {
+  try {
+    //TODO check if user is part of the group
+    const username = req.verified.username
+    const group_id = req.params.group_id
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' })
+    }
+
+    const file = req.file
+    const imageData = file.buffer
+
+    const resizedImageData = await sharp(imageData)
+      .resize({ width: 400, height: 400, fit: 'cover' })
+      .toBuffer();
+
+    await Group.update({group_picture: resizedImageData},{where:{
+      group_id
+    }})
+
+    res.status(201).json("Success")
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Internal Server Error' })
+  }
+});
+
+API.get('/group_picture/:group_id', async (req, res) => {
+  try {
+    const group_id = req.params.group_id;
+
+    const group = await Group.findOne({ where: { group_id } });
+
+    if (!group || group?.group_picture==null) {
+      return res.status(404).send(null)
+    }
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.status(200).send(group.group_picture);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 
 

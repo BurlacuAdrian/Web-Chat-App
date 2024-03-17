@@ -13,7 +13,7 @@ const Group = db.define('Group', {
     allowNull: false
   }, 
   group_picture: {
-    type: Sequelize.STRING,
+    type: Sequelize.BLOB('long'),
     allowNull: true
   },
 })

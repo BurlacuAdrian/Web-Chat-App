@@ -16,6 +16,10 @@ const User = db.define('User', {
     type: Sequelize.STRING,
     allowNull: false
   },
+  profile_picture: {
+    type: Sequelize.BLOB('long'),
+    allowNull: true
+  }
 })
 
 
