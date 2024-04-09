@@ -21,6 +21,11 @@ export default function ChatPage({ setLoggedIn }) {
   const [newGroupNameInputText, setNewGroupNameInputText] = useState('')
   const [groupOptionsModal, setGroupOptionsModal] = useState(false)
   const [addFriendByUsernameInputText, setAddFriendByUsernameInputText] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [reloadImage, setReloadImage] = useState(false)
+
+  const USER_PFP_BASE_URL = 'http://localhost:8080/api/v1/profile_picture'
+  const GROUP_PIC_BASE_URL = 'http://localhost:8080/api/v1/group_picture'
 
   /*** Socket handling ***/
 
@@ -252,6 +257,45 @@ export default function ChatPage({ setLoggedIn }) {
     setAddFriendByUsernameInputText('')
   }
 
+  const handleFileChange = (event) => {
+    setSelectedFile(event.target.files[0]);
+  }
+
+  const handleSubmit = async () => {
+    if (!selectedFile) 
+      return
+
+    if(selectedConversation.current.type!='group'){
+      console.log("Not in a group conversation")
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('group_picture', selectedFile)
+
+      const response = await axiosInstance.put(`/group_picture/${selectedConversation.current.id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.status===201) {
+        console.log('Group picture updated successfully.')
+        setSelectedFile(null)
+        
+        const groupImage = document.getElementById('img-'+selectedConversation.current.id)
+        groupImage.setAttribute('src',`${GROUP_PIC_BASE_URL}/${selectedConversation.current.id}`)
+
+      } else {
+        console.error('Failed to update group picture.')
+        
+      }
+    } catch (error) {
+      console.error('Error updating group picture:', error)
+    }
+  }
+
   /*** Modal and button handling end ***/
 
 
@@ -263,9 +307,9 @@ export default function ChatPage({ setLoggedIn }) {
         {/* User details and profile button */}
         <div className="grid grid-rows-2 row-span-1">
           <div className="grid grid-cols-3">
-            <div className='bg-green-700'>PFP</div>
+            <img className='size-12' src={`${USER_PFP_BASE_URL}/${username}`}/>
             <div className='bg-green-600'>{username}</div>
-            <Link to='/profile'>Profile</Link>
+            <Link className='bg-green-400' to='/profile'>Profile</Link>
           </div>
         </div>
 
@@ -275,7 +319,7 @@ export default function ChatPage({ setLoggedIn }) {
             return (
               <div key={conversationElement.id}>
                 <div className={'grid grid-cols-4' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
-                  <div className='bg-green-400 col-span-1'>PFP</div>
+                  <img className='bg-green-400 col-span-1' src={ (conversationElement.type=='user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL ) + `/${conversationElement.id}`} id={"img-"+conversationElement.id}/>
                   <div className='bg-yellow-400 col-span-2 grid grid-rows-2'>
                     <span>{conversationElement.display_name}</span>
                     <span>{conversationElement.last_message}</span>
@@ -332,9 +376,9 @@ export default function ChatPage({ setLoggedIn }) {
           <input className='w-3/5' placeholder='Enter a username or full name'></input>
           <div className="bg-blue-100 w-3/5 h-1/2 flex flex-col gap-4">
             {searchedUsers.map(userElement => {
-              return(
+              return( 
                 <div className={'flex border border-solid border-black gap-2 p-2'+hoverTransitionClassName} onClick={()=>openConversation(userElement.username, 'user')}>
-                  <div>pfp</div>
+                  <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12'/>
                   <div>{userElement.display_name}</div>
                   <div>{userElement.username}</div>
                 </div>
@@ -369,11 +413,14 @@ export default function ChatPage({ setLoggedIn }) {
 
       {/* group options modal */}
       {
-        groupOptionsModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4'>
+        groupOptionsModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4 gap-8'>
           <input placeholder="Enter a friend's username" value={addFriendByUsernameInputText} onChange={(e) => setAddFriendByUsernameInputText(e.target.value)}></input>
           <br/>
           <button onClick={handleAddFriendButton}>Add friend</button>
           <br/>
+          <br/>
+          <input type="file" accept="image/*" onChange={handleFileChange}/>
+          <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>          
           <button onClick={handleGroupOptionsModal}>Cancel</button>
         </div>
       }
