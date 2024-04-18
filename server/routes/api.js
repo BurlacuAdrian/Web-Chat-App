@@ -58,7 +58,7 @@ API.post('/signup', async (req, res) => {
     const password_hash = await bcrypt.hash(password, salt)
     await User.create({ username, display_name, password_hash })
 
-    jwt.sign({ username }, JWT_SECRET, { expiresIn: '1d' }, (err, token) => {
+    jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' }, (err, token) => {
       if (err) {
         console.error('Error signing JWT token:', err);
         return res.status(500).json({ error: 'Error signing JWT token' });
@@ -87,7 +87,7 @@ API.post('/login', async (req, res) => {
       res.status(401).json('Invalid username or password.')
     }
 
-    jwt.sign({ username }, JWT_SECRET, { expiresIn: '1d' }, (err, token) => {
+    jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' }, (err, token) => {
       if (err) {
         console.error('Error signing JWT token:', err);
         return res.status(500).json({ error: 'Error signing JWT token' });
@@ -490,6 +490,56 @@ API.get('/group_picture/:group_id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+API.get('/group_members/:group_id', async (req, res) => {
+  try {
+    const group_id = req.params.group_id;
+
+    const [members,mebersMeta] = await db.query({query:`
+    SELECT username, display_name, gm.joined_at
+    FROM User u
+    INNER JOIN GroupMembership gm ON gm.participant = u.username
+    WHERE group_id = ?
+    `,values:[group_id]})
+
+    res.status(200).json(members);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+})
+
+API.put('/display_name', verifyJWTMiddleware, async (req, res) => {
+  try {
+
+    const username = req.verified.username
+    const display_name = req.body.display_name
+
+    await User.update({display_name},{where:{
+      username
+    }})
+
+    res.status(201).json("Success")
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Internal Server Error' })
+  }
+});
+
+API.get('/display_name/:username', async (req, res) => {
+  try {
+
+    const username = req.params.username
+
+    const user = await User.findByPk(username)
+    const display_name = user.display_name
+
+    res.status(201).json(display_name)
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Internal Server Error' })
   }
 });
 

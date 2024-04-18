@@ -9,6 +9,18 @@ export default function ProfilePage({setLoggedIn}) {
   const [username, setUsername] = useState(localStorage.getItem('username'))
   const [selectedFile, setSelectedFile] = useState(null)
   const [reloadImage, setReloadImage] = useState(false)
+  const [newDisplayName, setNewDisplayName] = useState("")
+  const [displayName, setDisplayName] = useState("")
+
+  useEffect( () => {
+
+    async function fetchData(){
+      const response = await axiosInstance.get(`/display_name/${username}`)
+      console.log(response)
+      setDisplayName(response.data)
+    }
+    fetchData()
+  }, [])
 
   const handleFileChange = (event) => {
     setSelectedFile(event.target.files[0]);
@@ -58,13 +70,33 @@ export default function ProfilePage({setLoggedIn}) {
     }
   }
 
+  const updateDisplayName = async () => {
+    if(newDisplayName.length<3)
+      return
+
+    try {
+      const response = await axiosInstance.put('/display_name', {display_name:newDisplayName})
+
+      if (response.status>=200&response.status<300) {
+        console.log('Display name updated successfully.')
+      } else {
+        console.error('Failed to update Display name.')
+      }
+    } catch (error) {
+      console.error('Error deleting profile picture:', error)
+    }
+  }
+
   return (
     <div className="grid grid-cols-2 grid-rows-1 gap-x-12 gap-y-0 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
       <img className="bg-blue-400" src={`${USER_PFP_BASE_URL}/${username}?${reloadImage ? 'reload=' + Date.now() : ''}`} />
-      <div className="grid grid-cols-1 grid-rows-4 gap-x-0 gap-y-6">
+      <div className="grid grid-cols-1 grid-rows-7 gap-x-0 gap-y-6">
         <input type="file" accept="image/*" onChange={handleFileChange}/>
         <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>
         <button className='bg-blue-200' onClick={handleDelete}>Delete profile picture</button>
+        <p>Current display name : {displayName}</p>
+        <input placeholder='Enter a new display name' value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)}></input>
+        <button className='bg-blue-200' onClick={updateDisplayName}>Update display name</button>
         <Link className='bg-blue-200 flex justify-center items-center h-full' to={'/'}>Back to chat</Link>
       </div>
     </div>
