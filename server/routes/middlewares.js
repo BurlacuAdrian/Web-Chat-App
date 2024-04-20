@@ -22,3 +22,21 @@ export const verifyJWTMiddleware = (req, res, next) => {
     next(); 
   });
 };
+
+export const verifyJWT = (token) => {
+  if (!token) {
+    return null
+  }
+
+  var username = null
+
+  jwt.verify(token, JWT_SECRET, {}, (err, userData) => {
+    if (err) {
+      return null
+    }
+    
+    username = userData.username
+
+  });
+  return username
+};

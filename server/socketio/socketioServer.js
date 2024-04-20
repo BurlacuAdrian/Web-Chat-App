@@ -1,12 +1,58 @@
 import { createServer } from 'http'
 const server = createServer()
 import { Server } from 'socket.io'
+import { db, createDataBaseConnection } from '../db/dbconfig.js'
 const io = new Server(server, {
   cors: {
     origin: "http://localhost:5173"
   }
 })
 import {storeMessage} from '../routes/storeMessage.js'
+import ONLINE_USERS from './TwoWayMap.js'
+import { verifyJWT } from '../routes/middlewares.js'
+import { query } from 'express'
+
+//TODO debug only
+let previousState = {};
+
+function logMapContents(twoWayMap) {
+    setInterval(() => {
+        const currentState = twoWayMap.socketIdToUsernameMap;
+
+        // Compare current state with previous state
+        if (!isEqual(currentState, previousState)) {
+            console.log('Map contents:');
+            for (const key in currentState) {
+                console.log(`${key}: ${currentState[key]}`);
+            }
+            // console.log('---');
+        }
+
+        // Update previous state
+        previousState = { ...currentState };
+    }, 1000);
+}
+
+// Utility function to compare objects
+function isEqual(obj1, obj2) {
+    const obj1Keys = Object.keys(obj1);
+    const obj2Keys = Object.keys(obj2);
+
+    if (obj1Keys.length !== obj2Keys.length) {
+        return false;
+    }
+
+    for (let key of obj1Keys) {
+        if (obj1[key] !== obj2[key]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+logMapContents(ONLINE_USERS);
+
+
 
 const getCurrentTimeString = () => {
   const currentDate = new Date();
@@ -31,11 +77,76 @@ const getConversationRoomId = (username1, username2) => {
   return concatenatedUsernames;
 }
 
+const getFriendsUsernameArray = async (friendsOf) => {
+
+  var friendsArray = []
+
+  try {
+    const [friends, friendsMeta] = await db.query({query:`
+      (SELECT 
+        participant AS username 
+      FROM 
+        interactionlog 
+      WHERE 
+        conversation_with = ?)
+      UNION 
+      (SELECT 
+        conversation_with AS username 
+      FROM 
+        interactionlog 
+      WHERE 
+        participant = ?)
+    `,values:[friendsOf,friendsOf]})
+    const payload = friends.map(friendElement => {
+      return friendElement.username
+    })
+    friendsArray = payload
+    console.log(payload)
+  } catch (error) {
+    console.log(error)
+  }
+  
+  return friendsArray
+}
+
+const emitChangeToFriends = async (eventName, eventParams, friendsOf) => {
+
+  const friendsUsernameArray = await getFriendsUsernameArray(friendsOf)
+  console.log(friendsUsernameArray)
+  const friendsArray = friendsUsernameArray.map(username => ONLINE_USERS.getSocketIdFromUsername(username)) .filter(socketId => socketId !== undefined)
+
+  console.log(friendsArray)
+  friendsArray.forEach( socketId => {
+    const socket = io.sockets.sockets.get(socketId)
+    
+    if(socket){
+      console.log(`sending to ${socket.id}`)
+      socket.emit(eventName, eventParams)
+    }
+  })
+}
+
 io.on('connection', socket => {
   console.log(socket.id + " has connected")
 
+  const headers = socket.handshake.headers
+  const authorization = headers.authorization
+  const token = authorization.split(' ')[1]
+
+  let username = verifyJWT(token)
+  if(username==null){
+    socket.disconnect()
+    console.log("Kicked "+socket.id)
+    return
+  }
+
+  ONLINE_USERS.add(socket.id, username)
+  emitChangeToFriends('friend-connected',{friend_username: username},username)
+
   socket.on('disconnect', reason => {
     console.log(socket.id + " has disconnected")
+    emitChangeToFriends('friend-disconnected',{friend_username: username},username)
+    ONLINE_USERS.delete(socket.id)
   })
 
   socket.on('join-room', roomObject => {

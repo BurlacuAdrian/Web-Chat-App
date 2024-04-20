@@ -33,7 +33,6 @@ export default function ChatPage({ setLoggedIn }) {
   /*** Socket handling ***/
 
   const [isConnected, setIsConnected] = useState(socket.connected)
-  const [fooEvents, setFooEvents] = useState([])
 
   useEffect(() => {
     function onConnect() {
@@ -44,13 +43,8 @@ export default function ChatPage({ setLoggedIn }) {
       setIsConnected(false)
     }
 
-    function onFooEvent(value) {
-      setFooEvents(previous => [...previous, value])
-    }
-
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
-    socket.on('foo', onFooEvent)
 
     function receiveMessage(messageObj) {
 
@@ -65,12 +59,42 @@ export default function ChatPage({ setLoggedIn }) {
 
     }
 
+    function onFriendConnected({friend_username}){
+      // console.log(friend_username + 'connected!')
+      setConversations(oldValue => {
+        return oldValue.map(conversation => {
+            if (conversation.id === friend_username) {
+                return { ...conversation, online: true };
+            }
+            return conversation;
+        });
+      });
+    }
+
+    function onFriendDisconnected({friend_username}){
+      // console.log(friend_username + 'disconnected!')
+
+      setConversations(oldValue => {
+        return oldValue.map(conversation => {
+            if (conversation.id === friend_username) {
+                return { ...conversation, online: false }; 
+            }
+            return conversation;
+        });
+      });
+    }
+
     socket.on('receive-message', receiveMessage)
+
+    socket.on('friend-connected', onFriendConnected)
+    socket.on('friend-disconnected', onFriendDisconnected)
 
     return () => {
       socket.off('connect', onConnect)
       socket.off('disconnect', onDisconnect)
-      socket.off('foo', onFooEvent)
+
+      socket.off('friend-connected', onFriendConnected)
+      socket.off('friend-disconnected', onFriendDisconnected)
 
       socket.off('receive-message', receiveMessage)
     };
@@ -365,7 +389,7 @@ export default function ChatPage({ setLoggedIn }) {
                 <div className={'grid grid-cols-4' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
                   <img className='bg-green-400 col-span-1' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
                   <div className='bg-yellow-400 col-span-2 grid grid-rows-2'>
-                    <span>{conversationElement.display_name}</span>
+                    <span>{conversationElement.display_name + (conversationElement.hasOwnProperty('online') ? (conversationElement.online? 'online':'offline') : '')}</span>
                     <span>{conversationElement.last_message}</span>
                   </div>
                   {conversationElement.unread > 0 &&

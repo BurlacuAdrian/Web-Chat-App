@@ -18,6 +18,7 @@ import Message from '../db/entities/Message.js'
 import Group from '../db/entities/Group.js'
 import GroupMembership from '../db/entities/GroupMembership.js'
 
+import ONLINE_USERS from '../socketio/TwoWayMap.js'
 
 await createDataBaseConnection()
 // await db.sync({force:true})
@@ -122,6 +123,30 @@ API.get('/users', verifyJWTMiddleware, async (req, res) => {
 
 })
 
+//TODO debug only
+API.get('/online-users', verifyJWTMiddleware, async (req, res) => {
+  const username = req.verified.username
+
+  try {
+    const users = await User.findAll({
+      attributes: ['username', 'display_name']
+    })
+    const payload = users.map( userElement => {
+
+      return {
+        username: userElement.username,
+        display_name: userElement.display_name,
+        online: ONLINE_USERS.online(userElement.username)
+      }
+    })
+    res.status(200).json(payload)
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' })
+    console.log('Error at get/users', error)
+  }
+
+})
+
 API.put('/interaction/:with', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
   const conversation_with = req.params.with
@@ -212,6 +237,7 @@ GROUP BY
         display_name: userElement.display_name,
         last_message: userElement.last_message,
         unread: userElement.unread,
+        online: ONLINE_USERS.online(userElement.username)
       }
     })
 
