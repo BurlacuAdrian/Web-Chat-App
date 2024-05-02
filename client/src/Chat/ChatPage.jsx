@@ -47,47 +47,112 @@ export default function ChatPage({ setLoggedIn }) {
     socket.on('disconnect', onDisconnect)
 
     function receiveMessage(messageObj) {
+      console.log('received message')
+      
+      let { sender, receiver, room_id, text, type, time_sent } = messageObj
+      console.log(`room id ${room_id} and selectedConv ${selectedConversation.current.id}`)
 
-      //TODO handle not being in conversation and receiving message
+      if(type=='user')
+        room_id=sender
 
-      console.log(messageObj)
-      setMessages(oldMessages => {
-        const newMessages = [...oldMessages]
-        newMessages.push(messageObj)
-        return newMessages
-      })
+      if (room_id == selectedConversation.current.id) {
+        //In conversation
+        setMessages(oldMessages => {
+          const newMessages = [...oldMessages]
+          newMessages.push(messageObj)
+          return newMessages
+        })
+      } else {
+        setConversations( oldValue => {
+
+          const newValue = [...oldValue]
+
+          var found = false
+          newValue.forEach(conversationElement => {
+            if (conversationElement.id == sender)
+              found = true
+          })
+
+          if (!found) {
+            axiosInstance.get(`display_name/${sender}`).then(response=>{
+              //TODO review this
+              setConversations(oldConvos=>{
+                const newConvos = [...oldConvos]
+                return newConvos.map(convo=>{
+                  if(convo.id == sender){
+                    convo.display_name = response.data
+                  }
+                  return convo
+                })
+              })
+            })
+            newValue.push({
+              id: sender,
+              type,
+              display_name:sender,
+              last_message: text,
+              unread: 1,
+              online: true
+            })
+          }
+
+          return newValue.map(conversation => {
+            if (type == 'user') {
+              if (conversation.id === sender) {
+                return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
+              }
+            } else {
+              if (conversation.id === receiver) {
+                return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
+              }
+            }
+
+            return conversation;
+          });
+        });
+      }
+
+
 
     }
 
-    function onFriendConnected({friend_username}){
+    function onFriendConnected({ friend_username }) {
       // console.log(friend_username + 'connected!')
       setConversations(oldValue => {
         return oldValue.map(conversation => {
-            if (conversation.id === friend_username) {
-                return { ...conversation, online: true };
-            }
-            return conversation;
+          if (conversation.id === friend_username) {
+            return { ...conversation, online: true };
+          }
+          return conversation;
         });
       });
     }
 
-    function onFriendDisconnected({friend_username}){
+    function onFriendDisconnected({ friend_username }) {
       // console.log(friend_username + 'disconnected!')
 
       setConversations(oldValue => {
         return oldValue.map(conversation => {
-            if (conversation.id === friend_username) {
-                return { ...conversation, online: false }; 
-            }
-            return conversation;
+          if (conversation.id === friend_username) {
+            return { ...conversation, online: false };
+          }
+          return conversation;
         });
-      });
+      })
+    }
+
+    function handleBeingAddedToGroup(roomObj){
+      socketRef.current.emit('join-room', { room_id: roomObj.id, conversationType: "group" })
+      setConversations(oldValue=>{
+        return [...oldValue,roomObj]
+      })
     }
 
     socket.on('receive-message', receiveMessage)
 
     socket.on('friend-connected', onFriendConnected)
     socket.on('friend-disconnected', onFriendDisconnected)
+    socket.on('added-to-group', handleBeingAddedToGroup)
 
     return () => {
       socket.off('connect', onConnect)
@@ -95,20 +160,25 @@ export default function ChatPage({ setLoggedIn }) {
 
       socket.off('friend-connected', onFriendConnected)
       socket.off('friend-disconnected', onFriendDisconnected)
+      socket.off('added-to-group', handleBeingAddedToGroup)
 
       socket.off('receive-message', receiveMessage)
-    };
+
+      // if(selectedConversation.current.id!=null){
+      //   socket.emit('left-conversation', {conversation_id:selectedConversation.current.id, type: selectedConversation.current.type})
+      // }
+    }
   }, [])
 
   useEffect(() => {
     // no-op if the socket is already connected
-    socket.connect();
-
+    socket.connect()
+    socketRef.current = socket
     return () => {
-      socket.disconnect();
+      socket.disconnect()
       socketRef.current = null
-    };
-  }, []);
+    }
+  }, [])
 
   /*** Socket handling end ***/
 
@@ -117,8 +187,8 @@ export default function ChatPage({ setLoggedIn }) {
   const hoverTransitionClassName = ' transition-transform duration-200 hover:-translate-y-1 hover:cursor-pointer'
 
   const getConversationRoomId = (username1, username2) => {
-    const sortedUsernames = [username1, username2].sort();
-    const concatenatedUsernames = sortedUsernames.join('-');
+    const sortedUsernames = [username1, username2].sort()
+    const concatenatedUsernames = sortedUsernames.join('-')
     return concatenatedUsernames;
   }
 
@@ -175,18 +245,26 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.get('/conversations')
     const data = await response.data
     setConversations(data)
+    console.log(data)
+    data.forEach(conversationElement => {
+      // console.log(conversationElement)
+      if (conversationElement.type == 'group') {
+        socketRef.current.emit('join-room', { room_id: conversationElement.id, conversationType: conversationElement.type })
+      }
+    })
     // return data
   }
 
-  const updateInteractions = async () => {
-    const response = await axiosInstance.put(`/interaction/${selectedConversation.current.id}`)
+  const updateInteractions = async (conversationId) => {
+    const response = await axiosInstance.put(`/interaction/${conversationId}`)
   }
 
-  const updateGroupInteraction = async () => {
-    const response = await axiosInstance.put(`/group/${selectedConversation.current.id}`)
+  const updateGroupInteraction = async (conversationId) => {
+    const response = await axiosInstance.put(`/group/${conversationId}`)
   }
 
   const createGroup = async (groupName) => {
+    //TODO handle group creation error
     const response = await axiosInstance.post('/group', {
       group_name: groupName,
     }, {
@@ -200,6 +278,15 @@ export default function ChatPage({ setLoggedIn }) {
 
   const addFriendToGroup = async (friendName) => {
     const response = await axiosInstance.post(`/group/${selectedConversation.current.id}/${friendName}`)
+
+    var display_name = selectedConversation.current.id
+    conversations.forEach(conversationElement=>{
+      if(conversationElement.id == selectedConversation.current.id){
+        display_name=conversationElement.display_name
+      }
+    })
+
+    socketRef.current.emit('add-to-group',{friend_username:friendName, group_id:selectedConversation.current.id, display_name})
   }
 
   const openConversation = (conversationId, conversationType) => {
@@ -215,21 +302,57 @@ export default function ChatPage({ setLoggedIn }) {
       room_id = conversationId
     }
 
+    if (selectedConversation.current.id != null) {
+      if (selectedConversation.current.type === "user") {
+        updateInteractions(selectedConversation.current.id)
+      } else {//GROUP
+        updateGroupInteraction(selectedConversation.current.id)
+      }
+    }
+
     selectedConversation.current = { id: conversationId, type: conversationType, room_id: conversationId }
     setInConversationWith(conversationId)
 
     if (conversationType === "user") {
-      updateInteractions()
+      updateInteractions(selectedConversation.current.id)
     } else {//GROUP
-      updateGroupInteraction()
+      updateGroupInteraction(selectedConversation.current.id)
+    }
+
+    var found = false
+
+    conversations.forEach(conversationElement => {
+      if (conversationElement.id == conversationId)
+        found = true
+    })
+
+    if (!found) {
+      setConversations(oldValue => {
+        const newValue = [...oldValue]
+        newValue.push({
+          id: conversationId,
+          type: conversationType,
+          display_name: conversationId,
+          last_message: "",
+          unread: 0,
+          online: false
+        })
+        return newValue
+      })
     }
 
     getMessagesFromAPI()
 
-    socket.emit('join-room', {
+    let roomObj = {
       room_id: room_id,
       conversationType: conversationType
-    })
+    }
+
+    if (conversationType == 'user')
+      roomObj.withUser = conversationId
+
+    socket.emit('join-room', roomObj)
+    socket.emit('current-room', roomObj)
   }
 
   const updateSearchedUsers = async () => {
@@ -242,6 +365,22 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.get(`/group_members/${groupId}`)
     const data = await response.data
     setGroupMembers(data)
+  }
+
+  const leaveGroup = async () => {
+    const response = await axiosInstance.delete(`/group/${selectedConversation.current.id}`)
+    
+    setMessages([])
+    setInConversationWith(null)
+    const thisConversationId = selectedConversation.current.id
+    setConversations(oldValue=>{
+      const newValue = [...oldValue]
+      return newValue.filter(conversationElement=>{
+        return conversationElement.id!==thisConversationId
+      })
+    })
+    selectedConversation.current = {id:null}
+
   }
 
   /*** API interaction end***/
@@ -343,6 +482,11 @@ export default function ChatPage({ setLoggedIn }) {
     }
   }
 
+  const handleLeavingGroup = () => {
+    leaveGroup()
+    setGroupOptionsModal(false)
+  }
+
   /*** Modal and button handling end ***/
 
 
@@ -389,8 +533,8 @@ export default function ChatPage({ setLoggedIn }) {
                 <div className={'grid grid-cols-4' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
                   <img className='bg-green-400 col-span-1' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
                   <div className='bg-yellow-400 col-span-2 grid grid-rows-2'>
-                    <span>{conversationElement.display_name + (conversationElement.hasOwnProperty('online') ? (conversationElement.online? 'online':'offline') : '')}</span>
-                    <span>{conversationElement.last_message}</span>
+                    <span>{conversationElement.display_name + (conversationElement.hasOwnProperty('online') ? (conversationElement.online ? 'online' : 'offline') : '')}</span>
+                    <span>{(!!conversationElement.last_message && conversationElement.last_message.length)<=10 ? conversationElement.last_message : conversationElement.last_message.substring(0,10)+'...'}</span>
                   </div>
                   {conversationElement.unread > 0 &&
                     <div className='bg-blue-400 col-span-1'>{conversationElement.unread}</div>}
@@ -510,6 +654,7 @@ export default function ChatPage({ setLoggedIn }) {
             <br />
             <input type="file" accept="image/*" onChange={handleFileChange} />
             <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>
+            <button onClick={handleLeavingGroup}>Leave group</button>
             <button onClick={handleGroupOptionsModal}>Cancel</button>
           </div>
 

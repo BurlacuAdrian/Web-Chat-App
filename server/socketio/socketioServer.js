@@ -11,6 +11,8 @@ import {storeMessage} from '../routes/storeMessage.js'
 import ONLINE_USERS from './TwoWayMap.js'
 import { verifyJWT } from '../routes/middlewares.js'
 import { query } from 'express'
+import InteractionLog from '../db/entities/InteractionLog.js'
+import GroupMembership from '../db/entities/GroupMembership.js'
 
 //TODO debug only
 let previousState = {};
@@ -109,6 +111,35 @@ const getFriendsUsernameArray = async (friendsOf) => {
   return friendsArray
 }
 
+const updateUserInteraction = async (username, conversation_with) => {
+  const currentTimestamp = new Date();
+  try {
+    await InteractionLog.upsert({
+      conversation_with,
+      participant: username,
+      last_checked: currentTimestamp
+    })
+  } catch (error) {
+    console.log('Error at put/interaction', error)
+  }
+}
+
+const updateGroupInteraction = async (username, group_id) => {
+  const currentTimestamp = new Date();
+  try {
+    await GroupMembership.update({
+      last_checked: currentTimestamp
+    }, {
+      where: {
+        group_id,
+        participant: username,
+      }
+    })
+  } catch (error) {
+    console.log('Error at put/group', error)
+  }
+}
+
 const emitChangeToFriends = async (eventName, eventParams, friendsOf) => {
 
   const friendsUsernameArray = await getFriendsUsernameArray(friendsOf)
@@ -144,8 +175,16 @@ io.on('connection', socket => {
   emitChangeToFriends('friend-connected',{friend_username: username},username)
 
   socket.on('disconnect', reason => {
-    console.log(socket.id + " has disconnected")
+    console.log(`${socket.id} has disconnected and left ${socket.data.currentConversation}`)
     emitChangeToFriends('friend-disconnected',{friend_username: username},username)
+    if(socket.data.currentConversation){
+      if(socket.data.conversationType=='user'){
+        updateUserInteraction(username, socket.data.currentConversation)
+      }else{
+        updateGroupInteraction(username,socket.data.currentConversation)
+      }
+    }
+    
     ONLINE_USERS.delete(socket.id)
   })
 
@@ -153,6 +192,17 @@ io.on('connection', socket => {
     const { room_id, conversationType } = roomObject
     socket.join(room_id)
     console.log(`${socket.id} joined ${room_id}`)
+  })
+
+  socket.on('current-room', roomObject => {
+    const { room_id, conversationType } = roomObject
+
+    socket.data.conversationType = conversationType
+    if(roomObject.conversationType=='user')
+      socket.data.currentConversation = roomObject.withUser
+    else
+      socket.data.currentConversation = room_id
+    
   })
 
   socket.on("send-mesage", async (messageObj) => {
@@ -163,14 +213,35 @@ io.on('connection', socket => {
       room_id = getConversationRoomId(sender,receiver)
 
     //TODO this sends to all connected clients, including the sender
-    io.to(room_id).emit('receive-message', {
-      sender,
-      receiver,
-      room_id,
-      text,
-      type,
-      time_sent: getCurrentTimeString()
-    })
+    // io.to(room_id).emit('receive-message', {
+    //   sender,
+    //   receiver,
+    //   room_id,
+    //   text,
+    //   type,
+    //   time_sent: getCurrentTimeString()
+    // })
+
+    if(type=='user'){
+      io.to(ONLINE_USERS.getSocketIdFromUsername(receiver)).emit('receive-message', {
+        sender,
+        receiver,
+        room_id,
+        text,
+        type,
+        time_sent: getCurrentTimeString()
+      })
+    }else{
+      console.log('sent group message')
+      io.to(room_id).emit('receive-message', {
+        sender,
+        receiver,
+        room_id,
+        text,
+        type,
+        time_sent: getCurrentTimeString()
+      })
+    }
     // console.log(`${sender} sent a message to ${receiver} containing ${text}`)
 
     const result = await storeMessage({sender, receiver, text})
@@ -178,9 +249,18 @@ io.on('connection', socket => {
 
   })
 
-  socket.on("send-message2", () => {
-    console.log("here2 from")
+  socket.on('left-conversation', ({conversation_id,type})=>{
+    console.log('left '+conversation_id + ' of type '+type)
+  })
 
+  socket.on('add-to-group', ({friend_username, group_id, display_name})=>{
+    io.to(ONLINE_USERS.getSocketIdFromUsername(friend_username)).emit('added-to-group',{
+      id:group_id,
+      type:"group",
+      display_name,
+      last_message:"",
+      unread:0
+    })
   })
 })
 

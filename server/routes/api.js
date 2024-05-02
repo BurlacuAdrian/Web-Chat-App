@@ -85,7 +85,7 @@ API.post('/login', async (req, res) => {
 
     const correctPassword = await bcrypt.compare(password, queriedUser.password_hash)
     if (!correctPassword) {
-      res.status(401).json('Invalid username or password.')
+      return res.status(401).json({ error: 'Invalid username or password' })
     }
 
     jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' }, (err, token) => {
@@ -94,11 +94,12 @@ API.post('/login', async (req, res) => {
         return res.status(500).json({ error: 'Error signing JWT token' });
       }
 
-      res.cookie('token', token, { sameSite: 'none', secure: true }).status(200).json({ username })
+      const expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days in milliseconds
+      res.cookie('token', token, { expires: expirationDate, sameSite: 'none', secure: true }).status(200).json({ username })
     })
 
   } catch (error) {
-    res.status(500).json('Error during login')
+    res.status(500).json({ error: 'Error during login' })
     console.log('Error during login', error)
   }
 })
@@ -131,7 +132,7 @@ API.get('/online-users', verifyJWTMiddleware, async (req, res) => {
     const users = await User.findAll({
       attributes: ['username', 'display_name']
     })
-    const payload = users.map( userElement => {
+    const payload = users.map(userElement => {
 
       return {
         username: userElement.username,
@@ -156,6 +157,19 @@ API.put('/interaction/:with', verifyJWTMiddleware, async (req, res) => {
       conversation_with,
       participant: username,
       last_checked: currentTimestamp
+    })
+    //For the friend that has yet to interact with us
+    await InteractionLog.findOrCreate({
+      where: {
+        conversation_with: username,
+        participant: conversation_with
+      },
+      defaults: {
+        conversation_with: username,
+        participant: conversation_with,
+        last_checked: currentTimestamp
+      }
+
     })
     res.status(200).send("Success")
   } catch (error) {
@@ -395,6 +409,24 @@ API.delete('/group/:group_id/:friend', verifyJWTMiddleware, async (req, res) => 
   }
 })
 
+API.delete('/group/:group_id', verifyJWTMiddleware, async (req, res) => {
+  const username = req.verified.username
+  const group_id = req.params.group_id
+  console.log(`${group_id} left for ${username}`)
+  try {
+    await GroupMembership.destroy({
+      where: {
+        group_id,
+        participant: username
+      }
+    })
+    res.status(200).json("Left group successfully")
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' })
+    console.log('Error leaving group', error)
+  }
+})
+
 API.put('/group/:group_id', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
   const group_id = req.params.group_id
@@ -431,9 +463,11 @@ API.put('/profile_picture', verifyJWTMiddleware, upload.single('profile_picture'
       .resize({ width: 400, height: 400, fit: 'cover' })
       .toBuffer();
 
-    await User.update({profile_picture: resizedImageData},{where:{
-      username
-    }})
+    await User.update({ profile_picture: resizedImageData }, {
+      where: {
+        username
+      }
+    })
 
     res.status(201).json("Success")
   } catch (error) {
@@ -448,7 +482,7 @@ API.get('/profile_picture/:username', async (req, res) => {
 
     const user = await User.findOne({ where: { username } });
 
-    if (!user || user?.profile_picture==null) {
+    if (!user || user?.profile_picture == null) {
       return res.status(404).send(null)
     }
 
@@ -460,11 +494,11 @@ API.get('/profile_picture/:username', async (req, res) => {
   }
 });
 
-API.delete('/profile_picture', verifyJWTMiddleware,async (req, res) => {
+API.delete('/profile_picture', verifyJWTMiddleware, async (req, res) => {
   try {
     const username = req.verified.username
 
-    await User.update({profile_picture:null},{ where: { username } });
+    await User.update({ profile_picture: null }, { where: { username } });
 
     res.status(200).json("Success");
   } catch (error) {
@@ -490,9 +524,11 @@ API.put('/group_picture/:group_id', verifyJWTMiddleware, upload.single('group_pi
       .resize({ width: 400, height: 400, fit: 'cover' })
       .toBuffer();
 
-    await Group.update({group_picture: resizedImageData},{where:{
-      group_id
-    }})
+    await Group.update({ group_picture: resizedImageData }, {
+      where: {
+        group_id
+      }
+    })
 
     res.status(201).json("Success")
   } catch (error) {
@@ -507,7 +543,7 @@ API.get('/group_picture/:group_id', async (req, res) => {
 
     const group = await Group.findOne({ where: { group_id } });
 
-    if (!group || group?.group_picture==null) {
+    if (!group || group?.group_picture == null) {
       return res.status(404).send(null)
     }
 
@@ -523,12 +559,14 @@ API.get('/group_members/:group_id', async (req, res) => {
   try {
     const group_id = req.params.group_id;
 
-    const [members,mebersMeta] = await db.query({query:`
+    const [members, mebersMeta] = await db.query({
+      query: `
     SELECT username, display_name, gm.joined_at
     FROM User u
     INNER JOIN GroupMembership gm ON gm.participant = u.username
     WHERE group_id = ?
-    `,values:[group_id]})
+    `, values: [group_id]
+    })
 
     res.status(200).json(members);
   } catch (error) {
@@ -543,9 +581,11 @@ API.put('/display_name', verifyJWTMiddleware, async (req, res) => {
     const username = req.verified.username
     const display_name = req.body.display_name
 
-    await User.update({display_name},{where:{
-      username
-    }})
+    await User.update({ display_name }, {
+      where: {
+        username
+      }
+    })
 
     res.status(201).json("Success")
   } catch (error) {
