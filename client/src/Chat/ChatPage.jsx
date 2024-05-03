@@ -27,6 +27,8 @@ export default function ChatPage({ setLoggedIn }) {
   const [searchText, setSearchText] = useState('');
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [groupMembers, setGroupMembers] = useState([])
+  const [darkMode, setDarkMode] = useState(false)
+  const [navbar, setNavBar] = useState(false)
 
   const USER_PFP_BASE_URL = 'http://localhost:8080/api/v1/profile_picture'
   const GROUP_PIC_BASE_URL = 'http://localhost:8080/api/v1/group_picture'
@@ -204,10 +206,48 @@ export default function ChatPage({ setLoggedIn }) {
       type: selectedConversation.current.type
     })
 
+    if (selectedConversation.current.type == 'user') {
+      console.log('enter here')
+      const messageObj = {
+        sender: username,
+        receiver: selectedConversation.current.id,
+        room_id: getConversationRoomId(selectedConversation.current.id, username),
+        text: messageInputText,
+        type: selectedConversation.current.type,
+        time_sent: new Date()
+      }
+
+        setMessages(oldMessages => {
+          const newMessages = [...oldMessages]
+          newMessages.push(messageObj)
+          return newMessages
+        })
+
+    }
+
+    setConversations(oldValue => {
+
+      const newValue = [...oldValue]
+
+      var found = false
+      newValue.forEach(conversationElement => {
+        if (conversationElement.id == username)
+          found = true
+      })
+
+      return newValue.map(conversation => {
+        if (conversation.id === selectedConversation.current.id) {
+          return { ...conversation, last_message: messageInputText };
+        }
+
+        return conversation;
+      });
+    });
     setMessageInputText('');
 
     messageInputRef.current.focus();
-  };
+
+  }
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
@@ -247,12 +287,34 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Page load handling ***/
 
+  const handleResize = () => {
+
+    const messagesContainer = document.getElementById('messages-container')
+    const navbar = document.getElementById('navbar')
+    if (window.innerWidth < 768) {
+      //TODO exit current conversation, update selectedConversation, inConversationWith etc
+      messagesContainer.style.display = 'none'
+      navbar.style.display = 'block'
+      return
+    }
+
+
+
+    messagesContainer.style.display = 'block'
+    navbar.style.display = 'block'
+  }
+
   useEffect(() => {
     getConversationsFromAPI()
     getOwnDisplayName()
+    window.addEventListener('resize', handleResize)
     // const data = await getConversationsFromAPI()
     // console.log(data)
     // setConversations(data)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
   }, [])
 
   /*** Page load handling end***/
@@ -316,6 +378,7 @@ export default function ChatPage({ setLoggedIn }) {
   }
 
   const openConversation = (conversationId, conversationType) => {
+    switchMenuAndMessageView()
     setNewGroupModal(false)
     setNewMessageModal(false)
 
@@ -379,6 +442,15 @@ export default function ChatPage({ setLoggedIn }) {
 
     socket.emit('join-room', roomObj)
     socket.emit('current-room', roomObj)
+
+    setConversations(oldValue => {
+      return oldValue.map(conversation => {
+        if (conversation.id === conversationId) {
+          return { ...conversation, unread:0 };
+        }
+        return conversation;
+      });
+    });
   }
 
   const updateSearchedUsers = async () => {
@@ -518,6 +590,38 @@ export default function ChatPage({ setLoggedIn }) {
     setGroupOptionsModal(false)
   }
 
+  const handleDarkModeToggle = () => {
+    setDarkMode(oldValue => !oldValue)
+    document.body.classList.toggle('dark')
+  }
+
+  const handleToggleNavbar = () => {
+    setNavBar(oldValue => !oldValue)
+    document.getElementById('navbar').classList.toggle('hidden')
+  }
+
+
+  const switchMenuAndMessageView = () => {
+    const backButton = document.getElementById('back-button')
+    const backButtonStyle = window.getComputedStyle(backButton)
+
+    if (backButtonStyle.display == 'none')
+      return
+
+    const messagesContainer = document.getElementById('messages-container')
+    const navbar = document.getElementById('navbar')
+
+    const navBarStyle = window.getComputedStyle(navbar)
+
+    if (navBarStyle.display == 'none') {
+      navbar.style.display = 'inline-block'
+      messagesContainer.style.display = 'none'
+    } else {
+      navbar.style.display = 'none'
+      messagesContainer.style.display = 'inline-block'
+    }
+  }
+
   /*** Modal and button handling end ***/
 
 
@@ -543,12 +647,12 @@ export default function ChatPage({ setLoggedIn }) {
 
 
   return (
-    <div id='container' className=' grid grid-cols-3 h-full bg-zinc-50'>
+    <div id='container' className=' grid grid-cols-3 h-full bg-zinc-50 dark:bg-slate-900 overflow-hidden' >
 
       {/* Navbar */}
-      <div id='navbar' className="col-span-1 grid grid-rows-5 h-full">
+      <div id='navbar' className="lg:col-span-1 h-full lg:block  col-span-3 m-8 box-border z-10">
         {/* User details and profile button */}
-        <div className="grid grid-rows-2 row-span-1">
+        <div className="grid grid-rows-2 h-[10vh]">
           <div className="grid grid-cols-5 p-2 rounded-lg">
             <img className='rounded-lg col-span-1 size-16' src={`${USER_PFP_BASE_URL}/${username}`} />
             <div className='col-span-3 grid-rows-2'>
@@ -560,7 +664,7 @@ export default function ChatPage({ setLoggedIn }) {
         </div>
 
         {/* contacts container */}
-        <div id='contacts-container' className='overflow-y-scroll row-span-3 flex flex-col gap-2'>
+        <div id='contacts-container' className='overflow-y-auto flex flex-col gap-2 h-[80%] mt-12'>
           {conversations.map((conversationElement) => {
             return (
               <div key={conversationElement.id}>
@@ -583,48 +687,52 @@ export default function ChatPage({ setLoggedIn }) {
           })}
         </div>
 
-        <div className={'row-span-1 mt-auto bottom-0 w-full'}>
+        <div className={'mt-auto bottom-0 absolute'}>
           <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8'>Logout</button>
           <button className='bg-blue-400 p-12 m-4' onClick={openNewMessageModal}>New conversation</button>
-          <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName}></img>
+          {/* <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName} onClick={handleDarkModeToggle}></img> */}
         </div>
       </div>
 
       {/* Messages container */}
-      <div className="col-span-2 h-full pl-8 pt-8 pr-8 ">
-        {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4' onClick={handleGroupOptionsModal}>Group options</button>}
-        {inConversationWith == null ?
-          <div className='text-center relative top-1/2 text-xl animate-sinus leading-10'>
-            <b>Hint : </b>Select a conversation
-            <br/>from the menu on the left
-            <br/>or click 'New conversation'
-          </div> :
-          <div className='gap-3 overflow-y-scroll h-[80vh] flex flex-col'>
-            <span>Chatting with : {inConversationWith}</span>
-            {messages.map((messageElement) => {
-              return (
-                <div className={'bg-blue-100 w-2/3 rounded-xl p-4 ' + (messageElement.sender == username ? 'ml-auto mr-4 bg-green-100' : '')}>
-                  {/* <div className='font-bold'>{messageElement.sender}</div> */}
-                  <div className=''>{messageElement.text}</div>
-                  <div className=''>Sent at : {formatUTCDate(messageElement.time_sent)}</div>
-                </div>
-              )
-            })
-            }
-            <div className='absolute bottom-0 grid grid-cols-4 w-3/5'>
-              <input
-                ref={messageInputRef}
-                placeholder='Your message here'
-                value={messageInputText}
-                onChange={(e) => setMessageInputText(e.target.value)}
-                className='bg-gray-100 p-4 m-4 w-6/8 col-span-3'
-              />
-              <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-100 p-4 m-4 col-span-1'>Send</button>
+      <div id='messages-container' className="col-span-2 h-full hidden absolute w-full lg:block lg:static">
+        <div className='row-span-1 w-full h-[10vh] mt-4'>
+          <img id='back-button' src='../back.svg' className={'size-16 inline-block align-middle ml-8 lg:hidden' + hoverTransitionClassName} onClick={switchMenuAndMessageView}></img>
+          <span className='ml-6'>Chatting with : {inConversationWith}</span>
+          {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4 ml-16' onClick={handleGroupOptionsModal}>Group options</button>}
+        </div>
+        <div className=''>
+          {inConversationWith == null ?
+            <div className='text-center relative top-1/2 text-xl animate-sinus leading-10 '>
+              <b>Hint : </b>Select a conversation
+              <br />from the menu on the left
+              <br />or click 'New conversation'
+            </div> :
+            <div className='gap-3 overflow-y-scroll h-[80vh] flex flex-col pl-4 pr-4'>
 
-            </div>
-          </div>}
+              {messages.map((messageElement) => {
+                return (
+                  <div className={'bg-blue-100 w-2/3 rounded-xl p-4 h-auto whitespace-normal flex flex-col flex-wrap' + (messageElement.sender == username ? ' ml-auto mr-4 bg-green-100' : '')}>
+                    {selectedConversation.current.type=='group' && messageElement.sender!=username && <div className='font-bold'>{messageElement.sender}</div>}
+                    <span className='break-words max-w-full'>{messageElement.text}</span>
+                    <div className=''>Sent at : {formatUTCDate(messageElement.time_sent)}</div>
+                  </div>
+                )
+              })
+              }
+              <div className='absolute bottom-0 grid grid-cols-4 w-3/5'>
+                <input
+                  ref={messageInputRef}
+                  placeholder='Your message here'
+                  value={messageInputText}
+                  onChange={(e) => setMessageInputText(e.target.value)}
+                  className='bg-gray-100 p-4 m-4 w-6/8 col-span-3'
+                />
+                <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-100 p-4 m-4 col-span-1'>Send</button>
 
-
+              </div>
+            </div>}
+        </div>
       </div>
 
       {/* new message modal */}
