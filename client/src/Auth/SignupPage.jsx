@@ -32,12 +32,12 @@ export default function SignUpPage({setLoggedIn}) {
   }
 
   return (
-    <div id='login-page-container'>
+    <div id='login-page-container' className='w-[40%] h-[60%] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center content-around justify-around bg-slate-100 rounded-xl'>
       <h1>WebChat Sign Up</h1>
-      <input id='username-input'></input>
-      <input id='password-input' type='password'></input>
-      <button onClick={signup}>Create account</button>
-      <Link to="/login" className='log-button' >Already have an account? Log in</Link>
+      <input id='username-input' className='input-main'></input>
+      <input id='password-input' type='password' className='input-main'></input>
+      <button onClick={signup} className='button-main '>Create account</button>
+      <Link to="/login" className='button-main ' >Already have an account? Log in</Link>
       
     </div>
   )

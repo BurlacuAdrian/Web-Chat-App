@@ -88,8 +88,8 @@ export default function ProfilePage({setLoggedIn}) {
   }
 
   return (
-    <div className="grid grid-cols-2 grid-rows-1 gap-x-12 gap-y-0 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-      <img className="bg-blue-400" src={`${USER_PFP_BASE_URL}/${username}?${reloadImage ? 'reload=' + Date.now() : ''}`} />
+    <div className="grid grid-cols-2 grid-rows-1 gap-x-12 gap-y-0 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ">
+      <img className="bg-blue-400 rounded-xl" src={`${USER_PFP_BASE_URL}/${username}?${reloadImage ? 'reload=' + Date.now() : ''}`} />
       <div className="grid grid-cols-1 grid-rows-7 gap-x-0 gap-y-6">
         <input type="file" accept="image/*" onChange={handleFileChange}/>
         <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>

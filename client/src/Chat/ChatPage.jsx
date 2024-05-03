@@ -7,6 +7,7 @@ export default function ChatPage({ setLoggedIn }) {
   const navigate = useNavigate()
 
   const [username, setUsername] = useState(localStorage.getItem('username'))
+  const [displayName, setDisplayName] = useState(username)
   const [messages, setMessages] = useState([])
   const [conversations, setConversations] = useState([])
   const [messageInputText, setMessageInputText] = useState('')
@@ -48,12 +49,12 @@ export default function ChatPage({ setLoggedIn }) {
 
     function receiveMessage(messageObj) {
       console.log('received message')
-      
+
       let { sender, receiver, room_id, text, type, time_sent } = messageObj
       console.log(`room id ${room_id} and selectedConv ${selectedConversation.current.id}`)
 
-      if(type=='user')
-        room_id=sender
+      if (type == 'user')
+        room_id = sender
 
       if (room_id == selectedConversation.current.id) {
         //In conversation
@@ -63,7 +64,7 @@ export default function ChatPage({ setLoggedIn }) {
           return newMessages
         })
       } else {
-        setConversations( oldValue => {
+        setConversations(oldValue => {
 
           const newValue = [...oldValue]
 
@@ -74,12 +75,12 @@ export default function ChatPage({ setLoggedIn }) {
           })
 
           if (!found) {
-            axiosInstance.get(`display_name/${sender}`).then(response=>{
+            axiosInstance.get(`display_name/${sender}`).then(response => {
               //TODO review this
-              setConversations(oldConvos=>{
+              setConversations(oldConvos => {
                 const newConvos = [...oldConvos]
-                return newConvos.map(convo=>{
-                  if(convo.id == sender){
+                return newConvos.map(convo => {
+                  if (convo.id == sender) {
                     convo.display_name = response.data
                   }
                   return convo
@@ -89,7 +90,7 @@ export default function ChatPage({ setLoggedIn }) {
             newValue.push({
               id: sender,
               type,
-              display_name:sender,
+              display_name: sender,
               last_message: text,
               unread: 1,
               online: true
@@ -141,10 +142,10 @@ export default function ChatPage({ setLoggedIn }) {
       })
     }
 
-    function handleBeingAddedToGroup(roomObj){
+    function handleBeingAddedToGroup(roomObj) {
       socketRef.current.emit('join-room', { room_id: roomObj.id, conversationType: "group" })
-      setConversations(oldValue=>{
-        return [...oldValue,roomObj]
+      setConversations(oldValue => {
+        return [...oldValue, roomObj]
       })
     }
 
@@ -216,6 +217,30 @@ export default function ChatPage({ setLoggedIn }) {
     }
   })
 
+  function formatUTCDate(utcDate) {
+    const date = new Date(utcDate);
+    const day = date.getDate();
+    const month = date.toLocaleString('en-US', { month: 'long' });
+    const year = date.getFullYear();
+
+    const hour = date.getHours();
+    const minutes = date.getMinutes();
+
+    const formattedHour = hour < 10 ? '0' + hour : hour;
+    const formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
+    const daySuffix = getDaySuffix(date.getDate());
+    return `${formattedHour}:${formattedMinutes}, ${day}${getDaySuffix(day)} of ${month} ${year}`
+  }
+
+  function getDaySuffix(day) {
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  }
+
   /*** Utils end ***/
 
 
@@ -224,6 +249,7 @@ export default function ChatPage({ setLoggedIn }) {
 
   useEffect(() => {
     getConversationsFromAPI()
+    getOwnDisplayName()
     // const data = await getConversationsFromAPI()
     // console.log(data)
     // setConversations(data)
@@ -280,13 +306,13 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.post(`/group/${selectedConversation.current.id}/${friendName}`)
 
     var display_name = selectedConversation.current.id
-    conversations.forEach(conversationElement=>{
-      if(conversationElement.id == selectedConversation.current.id){
-        display_name=conversationElement.display_name
+    conversations.forEach(conversationElement => {
+      if (conversationElement.id == selectedConversation.current.id) {
+        display_name = conversationElement.display_name
       }
     })
 
-    socketRef.current.emit('add-to-group',{friend_username:friendName, group_id:selectedConversation.current.id, display_name})
+    socketRef.current.emit('add-to-group', { friend_username: friendName, group_id: selectedConversation.current.id, display_name })
   }
 
   const openConversation = (conversationId, conversationType) => {
@@ -369,18 +395,23 @@ export default function ChatPage({ setLoggedIn }) {
 
   const leaveGroup = async () => {
     const response = await axiosInstance.delete(`/group/${selectedConversation.current.id}`)
-    
+
     setMessages([])
     setInConversationWith(null)
     const thisConversationId = selectedConversation.current.id
-    setConversations(oldValue=>{
+    setConversations(oldValue => {
       const newValue = [...oldValue]
-      return newValue.filter(conversationElement=>{
-        return conversationElement.id!==thisConversationId
+      return newValue.filter(conversationElement => {
+        return conversationElement.id !== thisConversationId
       })
     })
-    selectedConversation.current = {id:null}
+    selectedConversation.current = { id: null }
 
+  }
+
+  const getOwnDisplayName = async () => {
+    const response = await axiosInstance.get(`/display_name/${username}`)
+    setDisplayName(response.data)
   }
 
   /*** API interaction end***/
@@ -512,78 +543,93 @@ export default function ChatPage({ setLoggedIn }) {
 
 
   return (
-    <div id='container' className='w-full h-full grid grid-cols-3'>
+    <div id='container' className=' grid grid-cols-3 h-full bg-zinc-50'>
 
       {/* Navbar */}
-      <div id='navbar' className="col-span-1 h-full border-red-600 border border-solid grid grid-rows-10">
+      <div id='navbar' className="col-span-1 grid grid-rows-5 h-full">
         {/* User details and profile button */}
         <div className="grid grid-rows-2 row-span-1">
-          <div className="grid grid-cols-3">
-            <img className='size-12' src={`${USER_PFP_BASE_URL}/${username}`} />
-            <div className='bg-green-600'>{username}</div>
-            <Link className='bg-green-400' to='/profile'>Profile</Link>
+          <div className="grid grid-cols-5 p-2 rounded-lg">
+            <img className='rounded-lg col-span-1 size-16' src={`${USER_PFP_BASE_URL}/${username}`} />
+            <div className='col-span-3 grid-rows-2'>
+              <div className='pl-4 pt-4'>{displayName}</div>
+              <div className='pl-4'>({username})</div>
+            </div>
+            <Link className='col-span-1 m-auto' to='/profile'>Profile</Link>
           </div>
         </div>
 
         {/* contacts container */}
-        <div id='contacts-container' className='flex flex-col gap-4 row-span-7'>
+        <div id='contacts-container' className='overflow-y-scroll row-span-3 flex flex-col gap-2'>
           {conversations.map((conversationElement) => {
             return (
               <div key={conversationElement.id}>
-                <div className={'grid grid-cols-4' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
-                  <img className='bg-green-400 col-span-1' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
-                  <div className='bg-yellow-400 col-span-2 grid grid-rows-2'>
-                    <span>{conversationElement.display_name + (conversationElement.hasOwnProperty('online') ? (conversationElement.online ? 'online' : 'offline') : '')}</span>
-                    <span>{(!!conversationElement.last_message && conversationElement.last_message.length)<=10 ? conversationElement.last_message : conversationElement.last_message.substring(0,10)+'...'}</span>
+                <div className={'grid grid-cols-4 pl-2' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
+                  <img className='bg-green-400 rounded-lg col-span-1 size-16' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
+                  <div className='ml-4 pl-4 pt-4 pb-4 col-span-2 grid grid-rows-2 bg-blue-100 rounded-lg '>
+                    <div>
+                      <span className='font-bold'>{conversationElement.display_name} </span>
+                      <span>{(conversationElement.hasOwnProperty('online') ? (conversationElement.online ? 'online' : 'offline') : '')}</span>
+                    </div>
+
+                    <span className=''>{(!!conversationElement.last_message && conversationElement.last_message.length) <= 10 ? conversationElement.last_message : conversationElement.last_message.substring(0, 10) + '...'}</span>
                   </div>
                   {conversationElement.unread > 0 &&
-                    <div className='bg-blue-400 col-span-1'>{conversationElement.unread}</div>}
+                    <div className='col-span-1 flex items-center text-center'>{`${conversationElement.unread} unread message` + (conversationElement.unread == 1 ? '' : 's')}</div>}
 
                 </div>
               </div>
             )
           })}
         </div>
-        <button className='bg-blue-400 p-4 m-4 row-span-1' onClick={openNewMessageModal}>New conversation</button>
-        <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 row-span-1'>Logout</button>
+
+        <div className={'row-span-1 mt-auto bottom-0 w-full'}>
+          <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8'>Logout</button>
+          <button className='bg-blue-400 p-12 m-4' onClick={openNewMessageModal}>New conversation</button>
+          <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName}></img>
+        </div>
       </div>
 
-      {/* Conversations container */}
-      <div className="col-span-2 h-full border-blue-600 border border-solid flex flex-col">
-
+      {/* Messages container */}
+      <div className="col-span-2 h-full pl-8 pt-8 pr-8 ">
+        {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4' onClick={handleGroupOptionsModal}>Group options</button>}
         {inConversationWith == null ?
-          <div className='flex-grow'>Select a conversation</div> :
-          <div className='flex-grow'>
-            {`Entered convo ${selectedConversation.current.id} of type ${selectedConversation.current.type} with id ${selectedConversation.current.id}`}
-            <button className='bg-blue-100 p-4' onClick={handleGroupOptionsModal}>Group options</button>
+          <div className='text-center relative top-1/2 text-xl animate-sinus leading-10'>
+            <b>Hint : </b>Select a conversation
+            <br/>from the menu on the left
+            <br/>or click 'New conversation'
+          </div> :
+          <div className='gap-3 overflow-y-scroll h-[80vh] flex flex-col'>
+            <span>Chatting with : {inConversationWith}</span>
             {messages.map((messageElement) => {
               return (
-                <div>
-                  <span>{messageElement.sender}</span>
-                  <span>{messageElement.text}</span>
-                  <span>{messageElement.time_sent}</span>
+                <div className={'bg-blue-100 w-2/3 rounded-xl p-4 ' + (messageElement.sender == username ? 'ml-auto mr-4 bg-green-100' : '')}>
+                  {/* <div className='font-bold'>{messageElement.sender}</div> */}
+                  <div className=''>{messageElement.text}</div>
+                  <div className=''>Sent at : {formatUTCDate(messageElement.time_sent)}</div>
                 </div>
               )
             })
             }
+            <div className='absolute bottom-0 grid grid-cols-4 w-3/5'>
+              <input
+                ref={messageInputRef}
+                placeholder='Your message here'
+                value={messageInputText}
+                onChange={(e) => setMessageInputText(e.target.value)}
+                className='bg-gray-100 p-4 m-4 w-6/8 col-span-3'
+              />
+              <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-100 p-4 m-4 col-span-1'>Send</button>
+
+            </div>
           </div>}
 
-        <div>
-          <input
-            ref={messageInputRef}
-            placeholder='Your message here'
-            value={messageInputText}
-            onChange={(e) => setMessageInputText(e.target.value)}
-            className='bg-gray-100 p-4 m-4 w-3/4'
-          />
-          <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-100 p-4 m-4'>Send</button>
 
-        </div>
       </div>
 
       {/* new message modal */}
       {
-        newMessageModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4'>
+        newMessageModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl flex flex-col items-center p-4'>
           <span className=''>Start a new conversation with : </span>
           <input
             className='w-3/5'
@@ -594,7 +640,7 @@ export default function ChatPage({ setLoggedIn }) {
           <div className="bg-blue-100 w-3/5 h-1/2 flex flex-col gap-4">
             {filteredUsers.map(userElement => {
               return (
-                <div className={'flex border border-solid border-black gap-2 p-2' + hoverTransitionClassName} onClick={() => openConversation(userElement.username, 'user')}>
+                <div className={'flex gap-2 p-2' + hoverTransitionClassName} onClick={() => openConversation(userElement.username, 'user')}>
                   <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12' />
                   <div>{userElement.display_name}</div>
                   <div>{userElement.username}</div>
@@ -614,7 +660,7 @@ export default function ChatPage({ setLoggedIn }) {
 
       {/* new group modal */}
       {
-        newGroupModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black flex flex-col items-center p-4'>
+        newGroupModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl flex flex-col items-center p-4'>
           <span className=''>Create a new group </span>
           <input className='w-3/5' placeholder='Enter a group name' value={newGroupNameInputText}
             onChange={(e) => setNewGroupNameInputText(e.target.value)}></input>
@@ -631,13 +677,13 @@ export default function ChatPage({ setLoggedIn }) {
       {/* group options modal */}
       {
         groupOptionsModal &&
-        <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl border border-solid border-black grid grid-cols-2 grid-rows-1 gap-x-12'>
+        <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl grid grid-cols-2 grid-rows-1 gap-x-12'>
           <div>
             <p>Group members : </p>
             <div className="bg-blue-100 w-3/5 h-1/2 flex flex-col gap-4">
               {groupMembers.map(userElement => {
                 return (
-                  <div className={'flex border border-solid border-black gap-2 p-2' + hoverTransitionClassName}>
+                  <div className={'flex gap-2 p-2' + hoverTransitionClassName}>
                     <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12' />
                     <div>{userElement.display_name}</div>
                     <div>Joined at : {userElement.joined_at}</div>

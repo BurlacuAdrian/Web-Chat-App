@@ -480,10 +480,11 @@ API.get('/profile_picture/:username', async (req, res) => {
   try {
     const username = req.params.username;
 
-    const user = await User.findOne({ where: { username } });
+    var user = await User.findOne({ where: { username } });
 
     if (!user || user?.profile_picture == null) {
-      return res.status(404).send(null)
+      user = await User.findOne({where:{username:'default_user'}})
+      // return res.status(404).send(null)
     }
 
     res.setHeader('Content-Type', 'image/jpeg');

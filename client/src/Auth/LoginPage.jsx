@@ -35,12 +35,12 @@ function LoginPage({setLoggedIn}) {
 
 
   return (
-    <div id='login-page-container'>
-      <h1>WebChat Login</h1>
-      <input id='username-input'></input>
-      <input id='password-input' type='password'></input>
-      <button onClick={login}>Login</button>
-      <Link to="/signup" className='log-button'>Don't have an account? Sign up!</Link>
+    <div className='w-[40%] h-[60%] absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center content-around justify-around bg-slate-100 rounded-xl'>
+      <h1 className='text-2xl'>WebChat Login</h1>
+      <input id='username-input' className='input-main'></input>
+      <input id='password-input' type='password' className='input-main'></input>
+      <button onClick={login} className='button-main '>Login</button>
+      <Link to="/signup" className='button-main' >Don't have an account? Sign up!</Link>
     </div>
   )
 

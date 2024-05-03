@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+
+  .button-main{
+    padding: 1rem;
+    border:1px solid black;
+    border-radius: 0.5rem;
+  }
+
+  .button-main:hover{
+    transform: translateY(-0.3rem);
+    transition-duration: 200ms;
+    cursor: pointer;
+    color:white;
+    background-color: black;
+  }
+
+  .input-main{
+    padding: 1rem;
+    width: 60%;
+    border-radius: 0.5rem;
+  }
+
+
+}
