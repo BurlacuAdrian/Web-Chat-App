@@ -9,6 +9,9 @@ import cors from 'cors'
 import { v4 as uuidv4 } from 'uuid'
 import sharp from 'sharp'
 import multer from 'multer'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 // Database entities
 import { db, createDataBaseConnection } from '../db/dbconfig.js'
@@ -39,6 +42,12 @@ apiRouter.use(cors({
 }))
 export default apiRouter
 const API = apiRouter
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const DEFAULT_PROFILE_PICTURE_PATH = path.join(__dirname,'..', 'public', 'images', 'default_profile_picture.png')
+const DEFAULT_PROFILE_PICTURE = fs.readFileSync(DEFAULT_PROFILE_PICTURE_PATH);
 
 API.get('/hello', (req, res) => {
   res.status(200).json('hello!')
@@ -481,14 +490,13 @@ API.get('/profile_picture/:username', async (req, res) => {
     const username = req.params.username;
 
     var user = await User.findOne({ where: { username } });
+    res.setHeader('Content-Type', 'image/jpeg');
 
     if (!user || user?.profile_picture == null) {
-      user = await User.findOne({where:{username:'default_user'}})
-      // return res.status(404).send(null)
+      return res.status(200).send(DEFAULT_PROFILE_PICTURE);
     }
 
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.status(200).send(user.profile_picture);
+    return res.status(200).send(user.profile_picture);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });

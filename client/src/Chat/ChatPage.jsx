@@ -29,9 +29,13 @@ export default function ChatPage({ setLoggedIn }) {
   const [groupMembers, setGroupMembers] = useState([])
   const [darkMode, setDarkMode] = useState(false)
   const [navbar, setNavBar] = useState(false)
+  const [mobileVersion, setMobileVersion] = useState(false)
 
   const USER_PFP_BASE_URL = 'http://localhost:8080/api/v1/profile_picture'
   const GROUP_PIC_BASE_URL = 'http://localhost:8080/api/v1/group_picture'
+
+  const MENU_STYLE = " border-2 border-solid border-blue-900 z-10 "
+  const MOBILE_MENU_STYLE = ' border-2 w-4/5 h-4/5'
 
   /*** Socket handling ***/
 
@@ -295,11 +299,12 @@ export default function ChatPage({ setLoggedIn }) {
       //TODO exit current conversation, update selectedConversation, inConversationWith etc
       messagesContainer.style.display = 'none'
       navbar.style.display = 'block'
+      setMobileVersion(true)
       return
     }
 
 
-
+    setMobileVersion(false)
     messagesContainer.style.display = 'block'
     navbar.style.display = 'block'
   }
@@ -647,7 +652,7 @@ export default function ChatPage({ setLoggedIn }) {
 
 
   return (
-    <div id='container' className=' grid grid-cols-3 h-full bg-zinc-50 dark:bg-slate-900 overflow-hidden' >
+    <div id='container' className={' grid grid-cols-3 h-full bg-zinc-50 dark:bg-slate-900 overflow-hidden '}>
 
       {/* Navbar */}
       <div id='navbar' className="lg:col-span-1 h-full lg:block  col-span-3 m-8 box-border z-10">
@@ -656,7 +661,7 @@ export default function ChatPage({ setLoggedIn }) {
           <div className="grid grid-cols-5 p-2 rounded-lg">
             <img className='rounded-lg col-span-1 size-16' src={`${USER_PFP_BASE_URL}/${username}`} />
             <div className='col-span-3 grid-rows-2'>
-              <div className='pl-4 pt-4'>{displayName}</div>
+              <div className='pl-4 pt-4'>Hello, {displayName} !</div>
               <div className='pl-4'>({username})</div>
             </div>
             <Link className='col-span-1 m-auto' to='/profile'>Profile</Link>
@@ -688,18 +693,18 @@ export default function ChatPage({ setLoggedIn }) {
         </div>
 
         <div className={'mt-auto bottom-0 absolute'}>
-          <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8'>Logout</button>
-          <button className='bg-blue-400 p-12 m-4' onClick={openNewMessageModal}>New conversation</button>
+          <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8 rounded-lg'>Logout</button>
+          <button className='bg-blue-400 p-12 m-4 rounded-lg' onClick={openNewMessageModal}>New conversation</button>
           {/* <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName} onClick={handleDarkModeToggle}></img> */}
         </div>
       </div>
 
       {/* Messages container */}
-      <div id='messages-container' className="col-span-2 h-full hidden absolute w-full lg:block lg:static">
+      <div id='messages-container' className={"col-span-2 h-full hidden absolute w-full lg:block lg:static "+ (mobileVersion? ' ':' ')}>
         <div className='row-span-1 w-full h-[10vh] mt-4'>
           <img id='back-button' src='../back.svg' className={'size-16 inline-block align-middle ml-8 lg:hidden' + hoverTransitionClassName} onClick={switchMenuAndMessageView}></img>
           <span className='ml-6'>Chatting with : {inConversationWith}</span>
-          {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4 ml-16' onClick={handleGroupOptionsModal}>Group options</button>}
+          {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4 ml-16 rounded-lg' onClick={handleGroupOptionsModal}>Group options</button>}
         </div>
         <div className=''>
           {inConversationWith == null ?
@@ -720,15 +725,15 @@ export default function ChatPage({ setLoggedIn }) {
                 )
               })
               }
-              <div className='absolute bottom-0 grid grid-cols-4 w-3/5'>
+              <div className='absolute bottom-0 grid grid-cols-4 lg:w-3/5 ml-auto w-11/12'>
                 <input
                   ref={messageInputRef}
                   placeholder='Your message here'
                   value={messageInputText}
                   onChange={(e) => setMessageInputText(e.target.value)}
-                  className='bg-gray-100 p-4 m-4 w-6/8 col-span-3'
+                  className='bg-gray-100 p-4 m-4 w-6/8 col-span-3 rounded-lg'
                 />
-                <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-100 p-4 m-4 col-span-1'>Send</button>
+                <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-200 p-4 m-4 col-span-1 rounded-lg'>Send</button>
 
               </div>
             </div>}
@@ -737,79 +742,72 @@ export default function ChatPage({ setLoggedIn }) {
 
       {/* new message modal */}
       {
-        newMessageModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl flex flex-col items-center p-4'>
+        newMessageModal && <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl flex flex-col items-center p-4 '+MENU_STYLE + (mobileVersion? MOBILE_MENU_STYLE:'')}>
           <span className=''>Start a new conversation with : </span>
           <input
-            className='w-3/5'
-            placeholder='Enter a username or full name'
+            className='w-3/5 input-main'
+            placeholder='Enter a username or full name to filter'
             value={searchText}
             onChange={handleInputChange}
           />
-          <div className="bg-blue-100 w-3/5 h-1/2 flex flex-col gap-4">
+          <div className="bg-blue-100 w-3/5 h-3/5 flex flex-col gap-4 overflow-y-scroll rounded-lg mt-4">
             {filteredUsers.map(userElement => {
               return (
                 <div className={'flex gap-2 p-2' + hoverTransitionClassName} onClick={() => openConversation(userElement.username, 'user')}>
-                  <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12' />
-                  <div>{userElement.display_name}</div>
-                  <div>{userElement.username}</div>
+                  <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12 rounded-lg' />
+                  <div>{userElement.display_name} ({userElement.username})</div>
+                  {/* <div></div> */}
                 </div>
               )
             })}
           </div>
-          <br />
-          <span>Or you can </span>
-          <br />
-          <button onClick={handleNewGroupModal}>Create a new group</button>
-          <br />
-          <br />
-          <button onClick={handleNewMessageModal}>Cancel</button>
+          <span className='mt-4'>Or you can </span>
+          <button onClick={handleNewGroupModal} className='button-main mt-4'>Create a new group</button>
+          <button onClick={handleNewMessageModal} className='button-main mt-4'>Cancel</button>
         </div>
       }
 
       {/* new group modal */}
       {
-        newGroupModal && <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl flex flex-col items-center p-4'>
+        newGroupModal && <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl flex flex-col items-center p-4 pt-8 pb-8 justify-around'+MENU_STYLE+ (mobileVersion? MOBILE_MENU_STYLE:'')}>
           <span className=''>Create a new group </span>
-          <input className='w-3/5' placeholder='Enter a group name' value={newGroupNameInputText}
+          <input className='w-3/5 input-main' placeholder='Enter a group name' value={newGroupNameInputText}
             onChange={(e) => setNewGroupNameInputText(e.target.value)}></input>
-          <span>Add your friends!</span>
-          <input className='w-3/5' placeholder='Enter a username or full name'></input>
-          <div className="bg-blue-100 w-3/5 h-1/2"></div>
+          {/* <span>Add your friends!</span>
+          <input className='w-3/5' placeholder='Enter a username or full name'></input> */}
+          {/* <div className="bg-blue-100 w-3/5 h-1/2"></div> */}
           <br />
-          <button onClick={handleCreateNewGroupButton}>Create group</button>
+          <button onClick={handleCreateNewGroupButton} className='button-main'>Create group</button>
           <br />
-          <button onClick={handleNewGroupModal}>Cancel</button>
+          <button onClick={handleNewGroupModal} className='button-main'>Cancel</button>
         </div>
       }
 
       {/* group options modal */}
       {
         groupOptionsModal &&
-        <div className='absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-1/2 bg-green-200 rounded-xl grid grid-cols-2 grid-rows-1 gap-x-12'>
-          <div>
+        <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl grid grid-cols-2 grid-rows-1 gap-x-12 '+MENU_STYLE+ (mobileVersion? MOBILE_MENU_STYLE:'')}>
+          <div className='p-4 pl-8'>
             <p>Group members : </p>
-            <div className="bg-blue-100 w-3/5 h-1/2 flex flex-col gap-4">
+            <div className="bg-blue-100 w-full h-3/4 overflow-y-scroll flex flex-col gap-4 mt-4 rounded-lg">
               {groupMembers.map(userElement => {
                 return (
                   <div className={'flex gap-2 p-2' + hoverTransitionClassName}>
                     <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12' />
-                    <div>{userElement.display_name}</div>
-                    <div>Joined at : {userElement.joined_at}</div>
+                    <div>{userElement.display_name} ({userElement.username})</div>
+                    <div>Joined at : {formatUTCDate(userElement.joined_at)}</div>
                   </div>
                 )
               })}
             </div>
           </div>
-          <div className='flex flex-col items-center p-4 gap-8'>
-            <input placeholder="Enter a friend's username" value={addFriendByUsernameInputText} onChange={(e) => setAddFriendByUsernameInputText(e.target.value)}></input>
-            <br />
-            <button onClick={handleAddFriendButton}>Add friend</button>
-            <br />
-            <br />
+          <div className='flex flex-col items-center p-4 gap-8 justify-between mt-8 mb-8'>
+            <input placeholder="Enter a friend's username" value={addFriendByUsernameInputText} onChange={(e) => setAddFriendByUsernameInputText(e.target.value)} className='input-main'></input>
+            <button onClick={handleAddFriendButton} className='button-main'>Add friend</button>
             <input type="file" accept="image/*" onChange={handleFileChange} />
-            <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>
-            <button onClick={handleLeavingGroup}>Leave group</button>
-            <button onClick={handleGroupOptionsModal}>Cancel</button>
+            <button className='button-main' onClick={handleSubmit} >Update profile picture</button>
+            <button onClick={handleLeavingGroup} className='button-main'>Leave group</button>
+            <button onClick={handleGroupOptionsModal} className='button-main'>Cancel</button>
           </div>
 
         </div>
