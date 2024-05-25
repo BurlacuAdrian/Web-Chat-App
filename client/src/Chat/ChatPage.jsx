@@ -2,6 +2,12 @@ import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { socket } from './socket'
 import axiosInstance from '../Auth/axiosConfig'
+import { MENU_STYLE, MOBILE_MENU_STYLE } from './Syles.js'
+import GroupOptionsModal from './Modals/GroupOptionsModal.jsx'
+import NewGroupModal from './Modals/NewGroupModal.jsx'
+import NewConversationModal from './Modals/NewConversationModal.jsx'
+import MessagesContainer from './MessagesContainer.jsx'
+import NavBar from './NavBar.jsx'
 
 export default function ChatPage({ setLoggedIn }) {
   const navigate = useNavigate()
@@ -10,32 +16,16 @@ export default function ChatPage({ setLoggedIn }) {
   const [displayName, setDisplayName] = useState(username)
   const [messages, setMessages] = useState([])
   const [conversations, setConversations] = useState([])
-  const [messageInputText, setMessageInputText] = useState('')
-  const [newMessageModal, setNewMessageModal] = useState(false)
-  const [newGroupModal, setNewGroupModal] = useState(false)
-  const [searchedUsers, setSearchedUsers] = useState([])
-  const messageInputRef = useRef(null)
   const sendButtonRef = useRef(null)
   const socketRef = useRef(null)
   const selectedConversation = useRef({ id: null })
   const [inConversationWith, setInConversationWith] = useState(null)
-  const [newGroupNameInputText, setNewGroupNameInputText] = useState('')
-  const [groupOptionsModal, setGroupOptionsModal] = useState(false)
-  const [addFriendByUsernameInputText, setAddFriendByUsernameInputText] = useState('')
-  const [selectedFile, setSelectedFile] = useState(null)
   const [reloadImage, setReloadImage] = useState(false)
-  const [searchText, setSearchText] = useState('');
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [groupMembers, setGroupMembers] = useState([])
   const [darkMode, setDarkMode] = useState(false)
   const [navbar, setNavBar] = useState(false)
   const [mobileVersion, setMobileVersion] = useState(false)
+  const [currentModal, setCurrentModal] = useState(null)
 
-  const USER_PFP_BASE_URL = 'http://localhost:8080/api/v1/profile_picture'
-  const GROUP_PIC_BASE_URL = 'http://localhost:8080/api/v1/group_picture'
-
-  const MENU_STYLE = " border-2 border-solid border-blue-900 z-10 "
-  const MOBILE_MENU_STYLE = ' border-2 w-4/5 h-4/5'
 
   /*** Socket handling ***/
 
@@ -191,66 +181,10 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Utils ***/
 
-  const hoverTransitionClassName = ' transition-transform duration-200 hover:-translate-y-1 hover:cursor-pointer'
-
   const getConversationRoomId = (username1, username2) => {
     const sortedUsernames = [username1, username2].sort()
     const concatenatedUsernames = sortedUsernames.join('-')
     return concatenatedUsernames;
-  }
-
-  const handleSendingMessage = () => {
-    if (messageInputText.length == 0)
-      return
-
-    socket.emit("send-mesage", {
-      sender: username,
-      receiver: selectedConversation.current.id,
-      text: messageInputText,
-      type: selectedConversation.current.type
-    })
-
-    if (selectedConversation.current.type == 'user') {
-      console.log('enter here')
-      const messageObj = {
-        sender: username,
-        receiver: selectedConversation.current.id,
-        room_id: getConversationRoomId(selectedConversation.current.id, username),
-        text: messageInputText,
-        type: selectedConversation.current.type,
-        time_sent: new Date()
-      }
-
-        setMessages(oldMessages => {
-          const newMessages = [...oldMessages]
-          newMessages.push(messageObj)
-          return newMessages
-        })
-
-    }
-
-    setConversations(oldValue => {
-
-      const newValue = [...oldValue]
-
-      var found = false
-      newValue.forEach(conversationElement => {
-        if (conversationElement.id == username)
-          found = true
-      })
-
-      return newValue.map(conversation => {
-        if (conversation.id === selectedConversation.current.id) {
-          return { ...conversation, last_message: messageInputText };
-        }
-
-        return conversation;
-      });
-    });
-    setMessageInputText('');
-
-    messageInputRef.current.focus();
-
   }
 
   useEffect(() => {
@@ -261,32 +195,7 @@ export default function ChatPage({ setLoggedIn }) {
     }
   })
 
-  function formatUTCDate(utcDate) {
-    const date = new Date(utcDate);
-    const day = date.getDate();
-    const month = date.toLocaleString('en-US', { month: 'long' });
-    const year = date.getFullYear();
-
-    const hour = date.getHours();
-    const minutes = date.getMinutes();
-
-    const formattedHour = hour < 10 ? '0' + hour : hour;
-    const formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
-    const daySuffix = getDaySuffix(date.getDate());
-    return `${formattedHour}:${formattedMinutes}, ${day}${getDaySuffix(day)} of ${month} ${year}`
-  }
-
-  function getDaySuffix(day) {
-    switch (day % 10) {
-      case 1: return 'st';
-      case 2: return 'nd';
-      case 3: return 'rd';
-      default: return 'th';
-    }
-  }
-
   /*** Utils end ***/
-
 
 
   /*** Page load handling ***/
@@ -324,8 +233,6 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Page load handling end***/
 
-
-
   /*** API interaction ***/
 
   const getMessagesFromAPI = async () => {
@@ -356,36 +263,9 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.put(`/group/${conversationId}`)
   }
 
-  const createGroup = async (groupName) => {
-    //TODO handle group creation error
-    const response = await axiosInstance.post('/group', {
-      group_name: groupName,
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-    const groupId = await response.data.group_id
-    return groupId
-  }
-
-  const addFriendToGroup = async (friendName) => {
-    const response = await axiosInstance.post(`/group/${selectedConversation.current.id}/${friendName}`)
-
-    var display_name = selectedConversation.current.id
-    conversations.forEach(conversationElement => {
-      if (conversationElement.id == selectedConversation.current.id) {
-        display_name = conversationElement.display_name
-      }
-    })
-
-    socketRef.current.emit('add-to-group', { friend_username: friendName, group_id: selectedConversation.current.id, display_name })
-  }
-
   const openConversation = (conversationId, conversationType) => {
     switchMenuAndMessageView()
-    setNewGroupModal(false)
-    setNewMessageModal(false)
+    Modals.closeModal()
 
     let room_id
 
@@ -451,39 +331,11 @@ export default function ChatPage({ setLoggedIn }) {
     setConversations(oldValue => {
       return oldValue.map(conversation => {
         if (conversation.id === conversationId) {
-          return { ...conversation, unread:0 };
+          return { ...conversation, unread: 0 };
         }
         return conversation;
       });
     });
-  }
-
-  const updateSearchedUsers = async () => {
-    const response = await axiosInstance.get("/users")
-    const data = await response.data
-    setSearchedUsers(data)
-  }
-
-  const getGroupMembers = async (groupId) => {
-    const response = await axiosInstance.get(`/group_members/${groupId}`)
-    const data = await response.data
-    setGroupMembers(data)
-  }
-
-  const leaveGroup = async () => {
-    const response = await axiosInstance.delete(`/group/${selectedConversation.current.id}`)
-
-    setMessages([])
-    setInConversationWith(null)
-    const thisConversationId = selectedConversation.current.id
-    setConversations(oldValue => {
-      const newValue = [...oldValue]
-      return newValue.filter(conversationElement => {
-        return conversationElement.id !== thisConversationId
-      })
-    })
-    selectedConversation.current = { id: null }
-
   }
 
   const getOwnDisplayName = async () => {
@@ -497,103 +349,12 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Modal and button handling ***/
 
-
-  const openNewMessageModal = async () => {
-    setNewMessageModal(true)
-    updateSearchedUsers()
-  }
-
-
-  const handleNewMessageModal = () => {
-    setNewMessageModal(oldValue => !oldValue)
-    setSearchText("")
-  }
-
-  const handleNewGroupModal = () => {
-    setNewGroupModal(oldValue => !oldValue)
-    setNewMessageModal(false)
-  }
-
-  const handleLogoutButton = () => {
-    localStorage.setItem('username', null)
-    navigate('/login')
-  }
-
   const handleKeyDown = (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       sendButtonRef.current.click()
     }
   };
-
-  const handleCreateNewGroupButton = async () => {
-    const groupName = newGroupNameInputText
-    setNewGroupNameInputText('')
-    const groupId = await createGroup(groupName)
-    openConversation(groupId, "group")
-  }
-
-  const handleGroupOptionsModal = () => {
-    setGroupOptionsModal(oldValue => !oldValue)
-    // updateSearchedUsers()
-    getGroupMembers(selectedConversation.current.id)
-  }
-
-  const handleAddFriendButton = () => {
-    setGroupOptionsModal(false)
-    addFriendToGroup(addFriendByUsernameInputText)
-    setAddFriendByUsernameInputText('')
-  }
-
-  const handleAddFriendToGroup = (friendName) => {
-    //TODO check if successful
-    addFriendToGroup(friendName)
-    setGroupOptionsModal(false)
-  }
-
-  const handleFileChange = (event) => {
-    setSelectedFile(event.target.files[0]);
-  }
-
-  const handleSubmit = async () => {
-    if (!selectedFile)
-      return
-
-    if (selectedConversation.current.type != 'group') {
-      console.log("Not in a group conversation")
-      return
-    }
-
-    try {
-      const formData = new FormData()
-      formData.append('group_picture', selectedFile)
-
-      const response = await axiosInstance.put(`/group_picture/${selectedConversation.current.id}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
-
-      if (response.status === 201) {
-        console.log('Group picture updated successfully.')
-        setSelectedFile(null)
-
-        const groupImage = document.getElementById('img-' + selectedConversation.current.id)
-        groupImage.setAttribute('src', `${GROUP_PIC_BASE_URL}/${selectedConversation.current.id}`)
-
-      } else {
-        console.error('Failed to update group picture.')
-
-      }
-    } catch (error) {
-      console.error('Error updating group picture:', error)
-    }
-  }
-
-  const handleLeavingGroup = () => {
-    leaveGroup()
-    setGroupOptionsModal(false)
-  }
 
   const handleDarkModeToggle = () => {
     setDarkMode(oldValue => !oldValue)
@@ -629,192 +390,93 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Modal and button handling end ***/
 
-
-  /*** Search and filter users handling ***/
-
-  useEffect(() => {
-    // Initial filter when searchedUsers changes
-    filterUsers(searchText);
-  }, [searchText, searchedUsers]);
-
-  const handleInputChange = (event) => {
-    setSearchText(event.target.value);
+  const Modals = {
+    closeModal : () => {
+      setCurrentModal(null)
+    },
+    GroupOptionsModal: {
+      DisplayedComponent: null,
+      open: () => {
+        setCurrentModal(Modals.GroupOptionsModal.DisplayedComponent)
+      }
+    },
+    NewGroupModal: {
+      DisplayedComponent: null,
+      open: () => {
+        setCurrentModal(Modals.NewGroupModal.DisplayedComponent)
+      }
+    },
+    NewConversationModal: {
+      DisplayedComponent: null,
+      open: () => {
+        setCurrentModal(Modals.NewConversationModal.DisplayedComponent)
+        // setSearchText("") TODO move inside
+        updateSearchedUsers()
+      }
+    }
   };
 
-  const filterUsers = (text) => {
-    const filteredUsers = searchedUsers.filter(userElement =>
-      userElement.username.includes(text) || userElement.display_name.includes(text)
-    );
-    setFilteredUsers(filteredUsers);
-  };
+  Modals.GroupOptionsModal.DisplayedComponent = (
+    <GroupOptionsModal
+      selectedConversation={selectedConversation}
+      closeModal={Modals.closeModal}
+      setMessages={setMessages}
+      setInConversationWith={setInConversationWith}
+      setConversations={setConversations}
+      mobileVersion={mobileVersion}
+      conversations={conversations}
+      socketRef={socketRef}
+    />
+  )
 
-  /*** Search and filter users handling end ***/
+  Modals.NewGroupModal.DisplayedComponent = (
+    <NewGroupModal
+    closeModal={Modals.closeModal}
+    openConversation={openConversation}
+    mobileVersion={mobileVersion}
+    />
+  )
+
+  Modals.NewConversationModal.DisplayedComponent = (
+    <NewConversationModal
+    closeModal={Modals.closeModal}
+    openConversation={openConversation}
+    openNewGroupModal={Modals.NewGroupModal.open}
+    mobileVersion={mobileVersion}
+    />
+  )
 
 
   return (
     <div id='container' className={' grid grid-cols-3 h-full bg-zinc-50 dark:bg-slate-900 overflow-hidden '}>
 
-      {/* Navbar */}
-      <div id='navbar' className="lg:col-span-1 h-full lg:block  col-span-3 m-8 box-border z-10">
-        {/* User details and profile button */}
-        <div className="grid grid-rows-2 h-[10vh]">
-          <div className="grid grid-cols-5 p-2 rounded-lg">
-            <img className='rounded-lg col-span-1 size-16' src={`${USER_PFP_BASE_URL}/${username}`} />
-            <div className='col-span-3 grid-rows-2'>
-              <div className='pl-4 pt-4'>Hello, {displayName} !</div>
-              <div className='pl-4'>({username})</div>
-            </div>
-            <Link className='col-span-1 m-auto' to='/profile'>Profile</Link>
-          </div>
-        </div>
+      <NavBar
+      openConversation={openConversation}
+      conversations={conversations}
+      username={username}
+      navigate={navigate}
+      displayName={displayName}
+      openNewConversationsModal={Modals.NewConversationModal.open}
+      />
 
-        {/* contacts container */}
-        <div id='contacts-container' className='overflow-y-auto flex flex-col gap-2 h-[80%] mt-12'>
-          {conversations.map((conversationElement) => {
-            return (
-              <div key={conversationElement.id}>
-                <div className={'grid grid-cols-4 pl-2' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
-                  <img className='bg-green-400 rounded-lg col-span-1 size-16' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
-                  <div className='ml-4 pl-4 pt-4 pb-4 col-span-2 grid grid-rows-2 bg-blue-100 rounded-lg '>
-                    <div>
-                      <span className='font-bold'>{conversationElement.display_name} </span>
-                      <span>{(conversationElement.hasOwnProperty('online') ? (conversationElement.online ? 'online' : 'offline') : '')}</span>
-                    </div>
+      <MessagesContainer
+      inConversationWith={inConversationWith}
+      messages={messages}
+      switchMenuAndMessageView={switchMenuAndMessageView}
+      openGroupOptionsModal={Modals.GroupOptionsModal.open}
+      sendButtonRef={sendButtonRef}
+      mobileVersion={mobileVersion}
+      selectedConversation={selectedConversation}
+      username={username}
+      socketRef={socketRef}
+      setMessages={setMessages}
+      setConversations={setConversations}
+      getConversationRoomId={getConversationRoomId}
+      />
 
-                    <span className=''>{(!!conversationElement.last_message && conversationElement.last_message.length) <= 10 ? conversationElement.last_message : conversationElement.last_message.substring(0, 10) + '...'}</span>
-                  </div>
-                  {conversationElement.unread > 0 &&
-                    <div className='col-span-1 flex items-center text-center'>{`${conversationElement.unread} unread message` + (conversationElement.unread == 1 ? '' : 's')}</div>}
-
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <div className={'mt-auto bottom-0 absolute'}>
-          <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8 rounded-lg'>Logout</button>
-          <button className='bg-blue-400 p-12 m-4 rounded-lg' onClick={openNewMessageModal}>New conversation</button>
-          {/* <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName} onClick={handleDarkModeToggle}></img> */}
-        </div>
-      </div>
-
-      {/* Messages container */}
-      <div id='messages-container' className={"col-span-2 h-full hidden absolute w-full lg:block lg:static "+ (mobileVersion? ' ':' ')}>
-        <div className='row-span-1 w-full h-[10vh] mt-4'>
-          <img id='back-button' src='../back.svg' className={'size-16 inline-block align-middle ml-8 lg:hidden' + hoverTransitionClassName} onClick={switchMenuAndMessageView}></img>
-          <span className='ml-6'>Chatting with : {inConversationWith}</span>
-          {selectedConversation.current.type == "group" && <button className='bg-blue-100 p-4 ml-16 rounded-lg' onClick={handleGroupOptionsModal}>Group options</button>}
-        </div>
-        <div className=''>
-          {inConversationWith == null ?
-            <div className='text-center relative top-1/2 text-xl animate-sinus leading-10 '>
-              <b>Hint : </b>Select a conversation
-              <br />from the menu on the left
-              <br />or click 'New conversation'
-            </div> :
-            <div className='gap-3 overflow-y-scroll h-[80vh] flex flex-col pl-4 pr-4'>
-
-              {messages.map((messageElement) => {
-                return (
-                  <div className={'bg-blue-100 w-2/3 rounded-xl p-4 h-auto whitespace-normal flex flex-col flex-wrap' + (messageElement.sender == username ? ' ml-auto mr-4 bg-green-100' : '')}>
-                    {selectedConversation.current.type=='group' && messageElement.sender!=username && <div className='font-bold'>{messageElement.sender}</div>}
-                    <span className='break-words max-w-full'>{messageElement.text}</span>
-                    <div className=''>Sent at : {formatUTCDate(messageElement.time_sent)}</div>
-                  </div>
-                )
-              })
-              }
-              <div className='absolute bottom-0 grid grid-cols-4 lg:w-3/5 ml-auto w-11/12'>
-                <input
-                  ref={messageInputRef}
-                  placeholder='Your message here'
-                  value={messageInputText}
-                  onChange={(e) => setMessageInputText(e.target.value)}
-                  className='bg-gray-100 p-4 m-4 w-6/8 col-span-3 rounded-lg'
-                />
-                <button onClick={handleSendingMessage} ref={sendButtonRef} className='bg-green-200 p-4 m-4 col-span-1 rounded-lg'>Send</button>
-
-              </div>
-            </div>}
-        </div>
-      </div>
-
-      {/* new message modal */}
-      {
-        newMessageModal && <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl flex flex-col items-center p-4 '+MENU_STYLE + (mobileVersion? MOBILE_MENU_STYLE:'')}>
-          <span className=''>Start a new conversation with : </span>
-          <input
-            className='w-3/5 input-main'
-            placeholder='Enter a username or full name to filter'
-            value={searchText}
-            onChange={handleInputChange}
-          />
-          <div className="bg-blue-100 w-3/5 h-3/5 flex flex-col gap-4 overflow-y-scroll rounded-lg mt-4">
-            {filteredUsers.map(userElement => {
-              return (
-                <div className={'flex gap-2 p-2' + hoverTransitionClassName} onClick={() => openConversation(userElement.username, 'user')}>
-                  <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12 rounded-lg' />
-                  <div>{userElement.display_name} ({userElement.username})</div>
-                  {/* <div></div> */}
-                </div>
-              )
-            })}
-          </div>
-          <span className='mt-4'>Or you can </span>
-          <button onClick={handleNewGroupModal} className='button-main mt-4'>Create a new group</button>
-          <button onClick={handleNewMessageModal} className='button-main mt-4'>Cancel</button>
-        </div>
-      }
-
-      {/* new group modal */}
-      {
-        newGroupModal && <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl flex flex-col items-center p-4 pt-8 pb-8 justify-around'+MENU_STYLE+ (mobileVersion? MOBILE_MENU_STYLE:'')}>
-          <span className=''>Create a new group </span>
-          <input className='w-3/5 input-main' placeholder='Enter a group name' value={newGroupNameInputText}
-            onChange={(e) => setNewGroupNameInputText(e.target.value)}></input>
-          {/* <span>Add your friends!</span>
-          <input className='w-3/5' placeholder='Enter a username or full name'></input> */}
-          {/* <div className="bg-blue-100 w-3/5 h-1/2"></div> */}
-          <br />
-          <button onClick={handleCreateNewGroupButton} className='button-main'>Create group</button>
-          <br />
-          <button onClick={handleNewGroupModal} className='button-main'>Cancel</button>
-        </div>
-      }
-
-      {/* group options modal */}
-      {
-        groupOptionsModal &&
-        <div className={'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1/2 h-3/5 bg-blue-100 rounded-xl grid grid-cols-2 grid-rows-1 gap-x-12 '+MENU_STYLE+ (mobileVersion? MOBILE_MENU_STYLE:'')}>
-          <div className='p-4 pl-8'>
-            <p>Group members : </p>
-            <div className="bg-blue-100 w-full h-3/4 overflow-y-scroll flex flex-col gap-4 mt-4 rounded-lg">
-              {groupMembers.map(userElement => {
-                return (
-                  <div className={'flex gap-2 p-2' + hoverTransitionClassName}>
-                    <img src={`${USER_PFP_BASE_URL}/${userElement.username}`} className='size-12' />
-                    <div>{userElement.display_name} ({userElement.username})</div>
-                    <div>Joined at : {formatUTCDate(userElement.joined_at)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-          <div className='flex flex-col items-center p-4 gap-8 justify-between mt-8 mb-8'>
-            <input placeholder="Enter a friend's username" value={addFriendByUsernameInputText} onChange={(e) => setAddFriendByUsernameInputText(e.target.value)} className='input-main'></input>
-            <button onClick={handleAddFriendButton} className='button-main'>Add friend</button>
-            <input type="file" accept="image/*" onChange={handleFileChange} />
-            <button className='button-main' onClick={handleSubmit} >Update profile picture</button>
-            <button onClick={handleLeavingGroup} className='button-main'>Leave group</button>
-            <button onClick={handleGroupOptionsModal} className='button-main'>Cancel</button>
-          </div>
-
-        </div>
-      }
+      {currentModal}
 
     </div >
   )
-
 
 }
