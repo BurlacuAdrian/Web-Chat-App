@@ -36,6 +36,8 @@ export default function NewConversationModal({openConversation, openNewGroupModa
   /*** On load ***/
 
   useEffect( () => {
+    //TODO verify if it works when modal re-mounts
+    setSearchText("") 
     updateSearchedUsers()
   },[])
 

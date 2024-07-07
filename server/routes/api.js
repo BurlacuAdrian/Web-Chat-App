@@ -20,6 +20,7 @@ import InteractionLog from '../db/entities/InteractionLog.js'
 import Message from '../db/entities/Message.js'
 import Group from '../db/entities/Group.js'
 import GroupMembership from '../db/entities/GroupMembership.js'
+import Attachment from '../db/entities/Attachment.js'
 
 import ONLINE_USERS from '../socketio/TwoWayMap.js'
 
@@ -112,7 +113,7 @@ API.post('/login', async (req, res) => {
     console.log('Error during login', error)
   }
 })
-
+//TODO remove, debug only
 API.get('/users', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
 
@@ -133,7 +134,7 @@ API.get('/users', verifyJWTMiddleware, async (req, res) => {
 
 })
 
-//TODO debug only
+//TODO remove, debug only
 API.get('/online-users', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
 
@@ -193,64 +194,67 @@ API.get('/conversations', verifyJWTMiddleware, async (req, res) => {
   try {
     const [users, usersMeta] = await db.query({
       query: `
-    SELECT 
-  u.display_name, 
-  u.username, 
-  COUNT(m.time_sent) AS unread, 
-  (
-    SELECT 
-      \`text\` 
-    FROM 
-      message 
-    WHERE 
-      (
-        sender = u.username 
-        AND receiver = ?
-      ) 
-      OR (
-        sender = ? 
-        AND receiver = u.username
-      ) 
-    ORDER BY 
-      time_sent DESC 
-    LIMIT 
-      1
-  ) AS last_message 
-FROM 
-  user u 
-  LEFT JOIN message m ON (
-    u.username = m.sender 
-    AND m.time_sent > (
       SELECT 
-        last_checked 
-      FROM 
-        interactionlog 
-      WHERE 
-        conversation_with = u.username 
-        AND participant = ?
-    )
-  ) 
-WHERE 
-  u.username IN (
-    SELECT 
-      participant AS username 
-    FROM 
-      interactionlog 
+      u.display_name, 
+      u.username, 
+      (
+        SELECT 
+          COUNT(*) 
+        FROM 
+          message m 
+        WHERE 
+          m.receiver = ?
+          AND m.time_sent > (
+            SELECT 
+              il.last_checked 
+            FROM 
+              interactionlog il 
+            WHERE 
+              il.conversation_with = u.username 
+              AND il.participant = ?
+          )
+      ) AS unread, 
+      (
+        SELECT 
+          m2.\`text\` 
+        FROM 
+          message m2 
+        WHERE 
+          (
+            m2.sender = u.username 
+            AND m2.receiver = ?
+          ) 
+          OR (
+            m2.sender = ? 
+            AND m2.receiver = u.username
+          ) 
+        ORDER BY 
+          m2.time_sent DESC 
+        LIMIT 
+          1
+      ) AS last_message 
+    FROM user u 
     WHERE 
-      conversation_with = ? 
-    UNION 
-    SELECT 
-      conversation_with AS username 
-    FROM 
-      interactionlog 
-    WHERE 
-      participant = ?
-  ) 
-GROUP BY 
-  u.display_name, 
-  u.username;
-
-  `, values: [username, username, username, username, username]
+      u.username IN (
+        SELECT 
+          il.participant AS username 
+        FROM 
+          interactionlog il 
+        WHERE 
+          il.conversation_with = ? 
+        UNION 
+        SELECT 
+          il2.conversation_with AS username 
+        FROM 
+          interactionlog il2 
+        WHERE 
+          il2.participant = ?
+      ) 
+    GROUP BY 
+      u.display_name, 
+      u.username;
+    
+  `, values: [username, username, username, username, username, username]
     })
 
     const usersPayload = users.map(userElement => {
@@ -293,6 +297,7 @@ GROUP BY
             groupmembership 
           WHERE 
             participant = ?
+          LIMIT 1
         ) 
       WHERE 
         g.group_id IN (
@@ -329,27 +334,40 @@ GROUP BY
   }
 });
 
-API.get('/messages/:with', verifyJWTMiddleware, async (req, res) => {
+API.get('/messages/:type/:with', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
-  const conversation_with = req.params.with
+  const {with: conversation_with, type} = req.params
+
+  console.log(conversation_with)
   if (conversation_with == null)
     res.status(400).send("Provide a username or group id")
   try {
-    const messages = await Message.findAll({
-      where: {
-        [Op.or]: [
-          {
-            sender: username,
-            receiver: conversation_with
-          },
-          {
-            sender: conversation_with,
-            receiver: username
-          }
-        ]
-      }
-    });
-    res.status(200).json(messages)
+
+    if(type == 'user'){
+      const messages = await db.query({query:`
+        SELECT m.id, m.sender, m.receiver, m.text, m.time_sent, a.file_type, a.file_path, a.original_name
+        FROM Message m
+        LEFT JOIN Attachment a
+        ON m.id = a.attachment_id
+        WHERE (
+        (m.sender = ? AND m.receiver = ?) 
+        OR 
+        (m.sender = ? AND m.receiver = ?) );
+        `,values:[username, conversation_with, conversation_with, username]});
+        res.status(200).json(messages[0])
+        return
+    }
+
+    const messages = await db.query({query:`
+      SELECT m.id, m.sender, m.receiver, m.text, m.time_sent, a.file_type, a.file_path, a.original_name
+      FROM Message m
+      LEFT JOIN Attachment a
+      ON m.id = a.attachment_id
+      WHERE (m.receiver = ?);
+      `,values:[conversation_with]});
+      res.status(200).json(messages[0])
+
+    
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' })
     console.log('Error at put/interaction', error)
@@ -618,7 +636,82 @@ API.get('/display_name/:username', async (req, res) => {
   }
 });
 
+API.get('/picture/:attachment_uuid', async (req, res) => {
+  try {
+    const attachment_uuid = req.params.attachment_uuid
 
+    const attachment = await Attachment.findByPk(attachment_uuid);
+    const ATTACHMENTS_PATH = path.join(__dirname, '..', 'public', 'attachments')
+
+    switch(attachment.file_type) {
+      case 'img':
+        res.setHeader('Content-Type', 'image/jpeg');
+        break;
+      case 'txt':
+        res.setHeader('Content-Type', 'text/plain');
+        break;
+      case 'pdf':
+        res.setHeader('Content-Type', 'application/pdf');
+        break;
+      default:
+        // code block
+    }
+
+    var user = await User.findOne({ where: { username } });
+    res.setHeader('Content-Type', 'image/jpeg');
+
+    if (!user || user?.profile_picture == null) {
+      return res.status(200).send(DEFAULT_PROFILE_PICTURE);
+    }
+
+    return res.status(200).send(user.profile_picture);
+
+    fs.readFile(ATTACHMENTS_PATH+`/${attachment_uuid}`, (err, data)=>{
+      return res.status(200).send(data);
+    })
+
+    
+
+    // return res.status(200).send(file);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+API.get('/download/:attachment_uuid', async (req, res) => {
+  try {
+    const attachment_uuid = req.params.attachment_uuid
+
+    const ATTACHMENTS_PATH = path.join(__dirname, '..', 'public', 'attachments')
+
+    return res.status(200).sendFile((ATTACHMENTS_PATH+`/${attachment_uuid}`));
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+API.post('/logout', async (req,res) => {
+  try {
+    return res.clearCookie('token').status(200).json('OK')
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+})
+
+API.get('/status/:user', async (req,res) => {
+  const {user} = req.params
+  try {
+    res.status(200).json(ONLINE_USERS.online(user))
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+})
 
 
 

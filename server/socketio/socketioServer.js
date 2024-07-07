@@ -1,13 +1,15 @@
 import { createServer } from 'http'
 const server = createServer()
 import { Server } from 'socket.io'
+import sharp from 'sharp'
 import { db, createDataBaseConnection } from '../db/dbconfig.js'
 const io = new Server(server, {
+  maxHttpBufferSize: 1e7,
   cors: {
     origin: "http://localhost:5173"
   }
 })
-import {storeMessage} from '../routes/storeMessage.js'
+import { storeMessage, storeAttachment } from '../routes/storeMessage.js'
 import ONLINE_USERS from './TwoWayMap.js'
 import { verifyJWT } from '../routes/middlewares.js'
 import { query } from 'express'
@@ -18,39 +20,39 @@ import GroupMembership from '../db/entities/GroupMembership.js'
 let previousState = {};
 
 function logMapContents(twoWayMap) {
-    setInterval(() => {
-        const currentState = twoWayMap.socketIdToUsernameMap;
+  setInterval(() => {
+    const currentState = twoWayMap.socketIdToUsernameMap;
 
-        // Compare current state with previous state
-        if (!isEqual(currentState, previousState)) {
-            console.log('Map contents:');
-            for (const key in currentState) {
-                console.log(`${key}: ${currentState[key]}`);
-            }
-            // console.log('---');
-        }
+    // Compare current state with previous state
+    if (!isEqual(currentState, previousState)) {
+      // console.log('Map contents:');
+      // for (const key in currentState) {
+      //   console.log(`${key}: ${currentState[key]}`);
+      // }
+      // console.log('---');
+    }
 
-        // Update previous state
-        previousState = { ...currentState };
-    }, 1000);
+    // Update previous state
+    previousState = { ...currentState };
+  }, 1000);
 }
 
 // Utility function to compare objects
 function isEqual(obj1, obj2) {
-    const obj1Keys = Object.keys(obj1);
-    const obj2Keys = Object.keys(obj2);
+  const obj1Keys = Object.keys(obj1);
+  const obj2Keys = Object.keys(obj2);
 
-    if (obj1Keys.length !== obj2Keys.length) {
-        return false;
+  if (obj1Keys.length !== obj2Keys.length) {
+    return false;
+  }
+
+  for (let key of obj1Keys) {
+    if (obj1[key] !== obj2[key]) {
+      return false;
     }
+  }
 
-    for (let key of obj1Keys) {
-        if (obj1[key] !== obj2[key]) {
-            return false;
-        }
-    }
-
-    return true;
+  return true;
 }
 logMapContents(ONLINE_USERS);
 
@@ -84,7 +86,8 @@ const getFriendsUsernameArray = async (friendsOf) => {
   var friendsArray = []
 
   try {
-    const [friends, friendsMeta] = await db.query({query:`
+    const [friends, friendsMeta] = await db.query({
+      query: `
       (SELECT 
         participant AS username 
       FROM 
@@ -98,7 +101,8 @@ const getFriendsUsernameArray = async (friendsOf) => {
         interactionlog 
       WHERE 
         participant = ?)
-    `,values:[friendsOf,friendsOf]})
+    `, values: [friendsOf, friendsOf]
+    })
     const payload = friends.map(friendElement => {
       return friendElement.username
     })
@@ -107,7 +111,7 @@ const getFriendsUsernameArray = async (friendsOf) => {
   } catch (error) {
     console.log(error)
   }
-  
+
   return friendsArray
 }
 
@@ -143,14 +147,14 @@ const updateGroupInteraction = async (username, group_id) => {
 const emitChangeToFriends = async (eventName, eventParams, friendsOf) => {
 
   const friendsUsernameArray = await getFriendsUsernameArray(friendsOf)
-  console.log(friendsUsernameArray)
-  const friendsArray = friendsUsernameArray.map(username => ONLINE_USERS.getSocketIdFromUsername(username)) .filter(socketId => socketId !== undefined)
+  // console.log(friendsUsernameArray)
+  const friendsArray = friendsUsernameArray.map(username => ONLINE_USERS.getSocketIdFromUsername(username)).filter(socketId => socketId !== undefined)
 
-  console.log(friendsArray)
-  friendsArray.forEach( socketId => {
+  // console.log(friendsArray)
+  friendsArray.forEach(socketId => {
     const socket = io.sockets.sockets.get(socketId)
-    
-    if(socket){
+
+    if (socket) {
       console.log(`sending to ${socket.id}`)
       socket.emit(eventName, eventParams)
     }
@@ -164,27 +168,28 @@ io.on('connection', socket => {
   const authorization = headers.authorization
   const token = authorization.split(' ')[1]
 
-  let username = verifyJWT(token)
-  if(username==null){
+  var username = verifyJWT(token)
+  if (username == null) {
+    socket.emit("failed-token")
     socket.disconnect()
-    console.log("Kicked "+socket.id)
+    console.log("Kicked " + socket.id)
     return
   }
 
   ONLINE_USERS.add(socket.id, username)
-  emitChangeToFriends('friend-connected',{friend_username: username},username)
+  emitChangeToFriends('friend-connected', { friend_username: username }, username)
 
   socket.on('disconnect', reason => {
     console.log(`${socket.id} has disconnected and left ${socket.data.currentConversation}`)
-    emitChangeToFriends('friend-disconnected',{friend_username: username},username)
-    if(socket.data.currentConversation){
-      if(socket.data.conversationType=='user'){
+    emitChangeToFriends('friend-disconnected', { friend_username: username }, username)
+    if (socket.data.currentConversation) {
+      if (socket.data.conversationType == 'user') {
         updateUserInteraction(username, socket.data.currentConversation)
-      }else{
-        updateGroupInteraction(username,socket.data.currentConversation)
+      } else {
+        updateGroupInteraction(username, socket.data.currentConversation)
       }
     }
-    
+
     ONLINE_USERS.delete(socket.id)
   })
 
@@ -198,19 +203,19 @@ io.on('connection', socket => {
     const { room_id, conversationType } = roomObject
 
     socket.data.conversationType = conversationType
-    if(roomObject.conversationType=='user')
+    if (roomObject.conversationType == 'user')
       socket.data.currentConversation = roomObject.withUser
     else
       socket.data.currentConversation = room_id
-    
+
   })
 
   socket.on("send-mesage", async (messageObj) => {
-    const { sender, receiver, text, type} = messageObj
+    const { sender, receiver, text, type } = messageObj
     //we assume default is group
     let room_id = receiver
-    if(type=="user")
-      room_id = getConversationRoomId(sender,receiver)
+    if (type == "user")
+      room_id = getConversationRoomId(sender, receiver)
 
     //TODO this sends to all connected clients, including the sender
     // io.to(room_id).emit('receive-message', {
@@ -222,17 +227,26 @@ io.on('connection', socket => {
     //   time_sent: getCurrentTimeString()
     // })
 
-    if(type=='user'){
+    if (type == 'user') {
       io.to(ONLINE_USERS.getSocketIdFromUsername(receiver)).emit('receive-message', {
         sender,
         receiver,
         room_id,
         text,
         type,
-        time_sent: getCurrentTimeString()
+        time_sent: getCurrentTimeString(),
+        file_type: null
       })
-    }else{
+    } else {
       console.log('sent group message')
+      // console.log({
+      //   sender,
+      //   receiver,
+      //   room_id,
+      //   text,
+      //   type,
+      //   time_sent: getCurrentTimeString()
+      // })
       io.to(room_id).emit('receive-message', {
         sender,
         receiver,
@@ -244,23 +258,121 @@ io.on('connection', socket => {
     }
     // console.log(`${sender} sent a message to ${receiver} containing ${text}`)
 
-    const result = await storeMessage({sender, receiver, text})
-    console.log(`${type} Message from ${sender} to ${receiver} `+ (result==true ? "sent" : "failed"))
+    const result = await storeMessage({ sender, receiver, text })
+    console.log(`${type} Message from ${sender} to ${receiver} ` + (result == true ? "sent" : "failed"))
 
   })
 
-  socket.on('left-conversation', ({conversation_id,type})=>{
-    console.log('left '+conversation_id + ' of type '+type)
+  socket.on('left-conversation', ({ conversation_id, type }) => {
+    console.log('left ' + conversation_id + ' of type ' + type)
   })
 
-  socket.on('add-to-group', ({friend_username, group_id, display_name})=>{
-    io.to(ONLINE_USERS.getSocketIdFromUsername(friend_username)).emit('added-to-group',{
-      id:group_id,
-      type:"group",
+  socket.on('add-to-group', ({ friend_username, group_id, display_name }) => {
+    io.to(ONLINE_USERS.getSocketIdFromUsername(friend_username)).emit('added-to-group', {
+      id: group_id,
+      type: "group",
       display_name,
-      last_message:"",
-      unread:0
+      last_message: "",
+      unread: 0
     })
+  })
+
+  socket.on("send-attachment", async (messageObj, callback) => {
+    const { sender, receiver, text, type, file, file_type, original_name } = messageObj
+    //we assume default is group
+
+    console.log(`received file ${original_name}`)
+    let room_id = receiver
+
+    if (type == "user")
+      room_id = getConversationRoomId(sender, receiver)
+
+    try {
+
+      var attachmentToBeStored = null
+
+      switch (file_type) {
+        case 'image/png':
+        case 'image/jpeg':
+          attachmentToBeStored = await sharp(file)
+          .resize({ width: 400, height: 400, fit: 'cover' })
+          .toBuffer();
+        break;
+      
+        default:
+          attachmentToBeStored = file
+          break;
+      }
+
+      const result = await storeAttachment({ sender, receiver, text }, attachmentToBeStored, file_type, original_name)
+
+      callback({
+        sender,
+        receiver,
+        room_id,
+        text,
+        type,
+        time_sent: getCurrentTimeString(),
+        file_type,
+        file_path: result,
+        original_name
+      })
+
+      var sendTo = null
+
+      if (type == 'user') {
+        sendTo = ONLINE_USERS.getSocketIdFromUsername(receiver)
+      }else{
+        sendTo = receiver
+        console.log(`receiver is ${sendTo}`)
+      }
+        io.to(sendTo).emit('receive-message', {
+          sender,
+          receiver,
+          room_id,
+          text,
+          type,
+          time_sent: getCurrentTimeString(),
+          file_type,
+          file_path: result,
+          original_name
+        })
+      
+    //   else{
+    //   console.log('sent group message')
+    //   io.to(room_id).emit('receive-message', {
+    //     sender,
+    //     receiver,
+    //     room_id,
+    //     text,
+    //     type,
+    //     time_sent: getCurrentTimeString()
+    //   })
+    // }
+      console.log('attach stored ' + result)
+    } catch (error) {
+      callback({
+        sender,
+        receiver,
+        room_id,
+        text: "Failed to send message",
+        type,
+        time_sent: getCurrentTimeString(),
+        file_type,
+        file_path: null,
+        original_name
+      })
+      console.log('attach failed')
+    }
+
+
+
+
+
+    // console.log(`${sender} sent a message to ${receiver} containing ${text}`)
+
+    // console.log(`${type} Message from ${sender} to ${receiver} `+ (result==true ? "sent" : "failed"))
+
   })
 })
 

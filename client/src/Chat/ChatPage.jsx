@@ -8,6 +8,8 @@ import NewGroupModal from './Modals/NewGroupModal.jsx'
 import NewConversationModal from './Modals/NewConversationModal.jsx'
 import MessagesContainer from './MessagesContainer.jsx'
 import NavBar from './NavBar.jsx'
+import ViewImageModal from './Modals/ViewImageModal.jsx'
+import AttachmentsModal from './Modals/AttachmentsModal.jsx'
 
 export default function ChatPage({ setLoggedIn }) {
   const navigate = useNavigate()
@@ -24,7 +26,8 @@ export default function ChatPage({ setLoggedIn }) {
   const [darkMode, setDarkMode] = useState(false)
   const [navbar, setNavBar] = useState(false)
   const [mobileVersion, setMobileVersion] = useState(false)
-  const [currentModal, setCurrentModal] = useState(null)
+  const [currentModal, setCurrentModal] = useState(0)
+  const [imageSource, setImageSource] = useState(null)
 
 
   /*** Socket handling ***/
@@ -37,6 +40,9 @@ export default function ChatPage({ setLoggedIn }) {
     }
 
     function onDisconnect() {
+      console.log("disconnected")
+      // if(localStorage.getItem(''))
+      // navigate('/login')
       setIsConnected(false)
     }
 
@@ -46,7 +52,7 @@ export default function ChatPage({ setLoggedIn }) {
     function receiveMessage(messageObj) {
       console.log('received message')
 
-      let { sender, receiver, room_id, text, type, time_sent } = messageObj
+      var { sender, receiver, room_id, text, type, time_sent, file_type, file_path, original_name } = messageObj
       console.log(`room id ${room_id} and selectedConv ${selectedConversation.current.id}`)
 
       if (type == 'user')
@@ -57,57 +63,55 @@ export default function ChatPage({ setLoggedIn }) {
         setMessages(oldMessages => {
           const newMessages = [...oldMessages]
           newMessages.push(messageObj)
+          console.log(messageObj)
           return newMessages
         })
-      } else {
-        setConversations(oldValue => {
+        return
+      }
 
-          const newValue = [...oldValue]
+      setConversations(oldValue => {
 
-          var found = false
-          newValue.forEach(conversationElement => {
-            if (conversationElement.id == sender)
-              found = true
-          })
+        const newValue = [...oldValue]
 
-          if (!found) {
-            axiosInstance.get(`display_name/${sender}`).then(response => {
-              //TODO review this
-              setConversations(oldConvos => {
-                const newConvos = [...oldConvos]
-                return newConvos.map(convo => {
-                  if (convo.id == sender) {
-                    convo.display_name = response.data
-                  }
-                  return convo
-                })
+        var found = false
+        newValue.forEach(conversationElement => {
+          if (conversationElement.id == sender)
+            found = true
+        })
+
+        //check if the conversation/group was in the navbar before
+        if (!found) {
+          axiosInstance.get(`display_name/${sender}`).then(response => {
+            //TODO review this
+            setConversations(oldConvos => {
+              const newConvos = [...oldConvos]
+              return newConvos.map(convo => {
+                if (convo.id == sender) {
+                  convo.display_name = response.data
+                }
+                return convo
               })
             })
-            newValue.push({
-              id: sender,
-              type,
-              display_name: sender,
-              last_message: text,
-              unread: 1,
-              online: true
-            })
+          })
+          newValue.push({
+            id: sender,
+            type,
+            display_name: sender,
+            last_message: text,
+            unread: 1,
+            online: true
+          })
+        }
+
+        return newValue.map(conversation => {
+          if ( (type == 'user' && conversation.id === sender) || (conversation.id === receiver) ) {
+              return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
           }
 
-          return newValue.map(conversation => {
-            if (type == 'user') {
-              if (conversation.id === sender) {
-                return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
-              }
-            } else {
-              if (conversation.id === receiver) {
-                return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
-              }
-            }
-
-            return conversation;
-          });
+          return conversation;
         });
-      }
+      });
+
 
 
 
@@ -145,11 +149,17 @@ export default function ChatPage({ setLoggedIn }) {
       })
     }
 
-    socket.on('receive-message', receiveMessage)
+    const failedToken = () => {
+      socket.disconnect()
+      navigate('/login')
+    }
 
+    socket.on('receive-message', receiveMessage)
+    socket.on('failed-token', failedToken)
     socket.on('friend-connected', onFriendConnected)
     socket.on('friend-disconnected', onFriendDisconnected)
     socket.on('added-to-group', handleBeingAddedToGroup)
+
 
     return () => {
       socket.off('connect', onConnect)
@@ -160,7 +170,7 @@ export default function ChatPage({ setLoggedIn }) {
       socket.off('added-to-group', handleBeingAddedToGroup)
 
       socket.off('receive-message', receiveMessage)
-
+      socket.off('failed-token', failedToken)
       // if(selectedConversation.current.id!=null){
       //   socket.emit('left-conversation', {conversation_id:selectedConversation.current.id, type: selectedConversation.current.type})
       // }
@@ -236,7 +246,8 @@ export default function ChatPage({ setLoggedIn }) {
   /*** API interaction ***/
 
   const getMessagesFromAPI = async () => {
-    const response = await axiosInstance.get(`/messages/${selectedConversation.current.id}`)
+    const response = await axiosInstance.get(`/messages/${selectedConversation.current.type}/${selectedConversation.current.id}`)
+    // console.log(`getting messages from a ${selectedConversation.current.type}`)
     const data = await response.data
     setMessages(data)
   }
@@ -263,12 +274,19 @@ export default function ChatPage({ setLoggedIn }) {
     const response = await axiosInstance.put(`/group/${conversationId}`)
   }
 
-  const openConversation = (conversationId, conversationType) => {
+  const getUserStatus = async (userId) => {
+    const result = await axiosInstance.get(`status/${userId}`)
+    const data = await result.data
+    return data
+  }
+
+  const openConversation = async (conversationId, conversationType) => {
     switchMenuAndMessageView()
     Modals.closeModal()
 
-    let room_id
+    var room_id
 
+    //Determine room id
     if (conversationType === "user") {
       const secondUsername = conversationId
       room_id = getConversationRoomId(username, secondUsername)
@@ -276,6 +294,7 @@ export default function ChatPage({ setLoggedIn }) {
       room_id = conversationId
     }
 
+    //For *previous* conversation : Update group or user interactions
     if (selectedConversation.current.id != null) {
       if (selectedConversation.current.type === "user") {
         updateInteractions(selectedConversation.current.id)
@@ -284,15 +303,18 @@ export default function ChatPage({ setLoggedIn }) {
       }
     }
 
+    //Update state and reference variables
     selectedConversation.current = { id: conversationId, type: conversationType, room_id: conversationId }
     setInConversationWith(conversationId)
 
+    //For *current* conversation : Update group or user interactions
     if (conversationType === "user") {
       updateInteractions(selectedConversation.current.id)
     } else {//GROUP
       updateGroupInteraction(selectedConversation.current.id)
     }
 
+    //Check if conversation is in the contacts container
     var found = false
 
     conversations.forEach(conversationElement => {
@@ -301,6 +323,8 @@ export default function ChatPage({ setLoggedIn }) {
     })
 
     if (!found) {
+
+      const onlineState = (conversationType == 'group' ? false : (await getUserStatus(conversationId)))
       setConversations(oldValue => {
         const newValue = [...oldValue]
         newValue.push({
@@ -309,7 +333,7 @@ export default function ChatPage({ setLoggedIn }) {
           display_name: conversationId,
           last_message: "",
           unread: 0,
-          online: false
+          online: onlineState
         })
         return newValue
       })
@@ -366,7 +390,7 @@ export default function ChatPage({ setLoggedIn }) {
     document.getElementById('navbar').classList.toggle('hidden')
   }
 
-
+  //TODO update
   const switchMenuAndMessageView = () => {
     const backButton = document.getElementById('back-button')
     const backButtonStyle = window.getComputedStyle(backButton)
@@ -390,91 +414,106 @@ export default function ChatPage({ setLoggedIn }) {
 
   /*** Modal and button handling end ***/
 
-  const Modals = {
-    closeModal : () => {
-      setCurrentModal(null)
+  const Modals = Object.freeze({
+    closeModal: () => {
+      setCurrentModal(0)
     },
-    GroupOptionsModal: {
-      DisplayedComponent: null,
-      open: () => {
-        setCurrentModal(Modals.GroupOptionsModal.DisplayedComponent)
-      }
+    openModal: (modalId) => {
+      setCurrentModal(modalId)
     },
-    NewGroupModal: {
-      DisplayedComponent: null,
-      open: () => {
-        setCurrentModal(Modals.NewGroupModal.DisplayedComponent)
-      }
-    },
-    NewConversationModal: {
-      DisplayedComponent: null,
-      open: () => {
-        setCurrentModal(Modals.NewConversationModal.DisplayedComponent)
-        // setSearchText("") TODO move inside
-        updateSearchedUsers()
-      }
-    }
-  };
-
-  Modals.GroupOptionsModal.DisplayedComponent = (
-    <GroupOptionsModal
-      selectedConversation={selectedConversation}
-      closeModal={Modals.closeModal}
-      setMessages={setMessages}
-      setInConversationWith={setInConversationWith}
-      setConversations={setConversations}
-      mobileVersion={mobileVersion}
-      conversations={conversations}
-      socketRef={socketRef}
-    />
-  )
-
-  Modals.NewGroupModal.DisplayedComponent = (
-    <NewGroupModal
-    closeModal={Modals.closeModal}
-    openConversation={openConversation}
-    mobileVersion={mobileVersion}
-    />
-  )
-
-  Modals.NewConversationModal.DisplayedComponent = (
-    <NewConversationModal
-    closeModal={Modals.closeModal}
-    openConversation={openConversation}
-    openNewGroupModal={Modals.NewGroupModal.open}
-    mobileVersion={mobileVersion}
-    />
-  )
-
+    GroupOptionsModal: 1,
+    NewGroupModal: 2,
+    NewConversationModal: 3,
+    ViewImageModal: 4,
+    AttachmentsModal: 5
+  });
 
   return (
     <div id='container' className={' grid grid-cols-3 h-full bg-zinc-50 dark:bg-slate-900 overflow-hidden '}>
 
       <NavBar
-      openConversation={openConversation}
-      conversations={conversations}
-      username={username}
-      navigate={navigate}
-      displayName={displayName}
-      openNewConversationsModal={Modals.NewConversationModal.open}
+        openConversation={openConversation}
+        conversations={conversations}
+        username={username}
+        navigate={navigate}
+        displayName={displayName}
+        openNewConversationsModal={() => Modals.openModal(Modals.NewConversationModal)}
       />
 
       <MessagesContainer
-      inConversationWith={inConversationWith}
-      messages={messages}
-      switchMenuAndMessageView={switchMenuAndMessageView}
-      openGroupOptionsModal={Modals.GroupOptionsModal.open}
-      sendButtonRef={sendButtonRef}
-      mobileVersion={mobileVersion}
-      selectedConversation={selectedConversation}
-      username={username}
-      socketRef={socketRef}
-      setMessages={setMessages}
-      setConversations={setConversations}
-      getConversationRoomId={getConversationRoomId}
+        inConversationWith={inConversationWith}
+        messages={messages}
+        switchMenuAndMessageView={switchMenuAndMessageView}
+        openGroupOptionsModal={() => Modals.openModal(Modals.GroupOptionsModal)}
+        sendButtonRef={sendButtonRef}
+        mobileVersion={mobileVersion}
+        selectedConversation={selectedConversation}
+        username={username}
+        socketRef={socketRef}
+        setMessages={setMessages}
+        setConversations={setConversations}
+        getConversationRoomId={getConversationRoomId}
+        openImageModal={() => Modals.openModal(Modals.ViewImageModal)}
+        openAttachmentsModal={() => Modals.openModal(Modals.AttachmentsModal)}
+        setImageSource={setImageSource}
+        closeModal={Modals.closeModal}
       />
 
-      {currentModal}
+      {currentModal != 0 && (
+        <div className='w-full h-full absolute bg-dim-overlay'>
+          {currentModal === Modals.GroupOptionsModal && (
+            <GroupOptionsModal
+              selectedConversation={selectedConversation}
+              closeModal={Modals.closeModal}
+              setMessages={setMessages}
+              setInConversationWith={setInConversationWith}
+              setConversations={setConversations}
+              mobileVersion={mobileVersion}
+              conversations={conversations}
+              socketRef={socketRef}
+            />
+          )}
+
+          {currentModal === Modals.NewGroupModal && (
+            <NewGroupModal
+              closeModal={Modals.closeModal}
+              openConversation={openConversation}
+              mobileVersion={mobileVersion}
+            />
+          )}
+
+          {currentModal === Modals.AttachmentsModal && (
+            <AttachmentsModal
+              closeModal={Modals.closeModal}
+              mobileVersion={mobileVersion}
+              socketRef={socketRef}
+              selectedConversation={selectedConversation}
+              username={username}
+              setMessages={setMessages}
+              setConversations={setConversations}
+            />
+          )}
+
+          {currentModal === Modals.ViewImageModal && (
+            <ViewImageModal
+              closeModal={Modals.closeModal}
+              mobileVersion={mobileVersion}
+              imageSource={imageSource}
+            />
+          )}
+
+          {currentModal === Modals.NewConversationModal && (
+            <NewConversationModal
+              closeModal={Modals.closeModal}
+              openConversation={openConversation}
+              openNewGroupModal={() => Modals.openModal(Modals.NewGroupModal)}
+              mobileVersion={mobileVersion}
+            />
+          )}
+
+
+        </div>
+      )}
 
     </div >
   )

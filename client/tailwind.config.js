@@ -15,6 +15,10 @@ export default {
       animation: {
         sinus: 'sinus 2.5s ease-in-out infinite',
       },
+      backgroundColor: {
+        'dim-overlay': 'rgba(0, 0, 0, 0.5)',
+      },
+
     },
   },
   darkMode:'class',

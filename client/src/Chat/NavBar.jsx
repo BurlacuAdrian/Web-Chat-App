@@ -12,8 +12,9 @@ const hoverTransitionClassName = ' transition-transform duration-200 hover:-tran
 
 export default function NavBar({openConversation, conversations, username, navigate, displayName, openNewConversationsModal}){
 
-  const handleLogoutButton = () => {
+  const handleLogoutButton = async () => {
     localStorage.setItem('username', null)
+    const response = await axiosInstance.post(`/logout`)
     navigate('/login')
   }
 
@@ -39,7 +40,7 @@ export default function NavBar({openConversation, conversations, username, navig
 
         <div className={'mt-auto bottom-0 absolute'}>
           <button onClick={handleLogoutButton} className='bg-gray-300 p-4 m-4 ml-8 rounded-lg'>Logout</button>
-          <button className='bg-blue-400 p-12 m-4 rounded-lg' onClick={openNewConversationsModal}>New conversation</button>
+          <button className='bg-blue-400 p-8 m-4 rounded-lg' onClick={openNewConversationsModal}>New conversation</button>
           {/* <img src='../sun.svg' className={'size-16 inline-block align-middle ml-8 '+hoverTransitionClassName} onClick={handleDarkModeToggle}></img> */}
         </div>
       </div>

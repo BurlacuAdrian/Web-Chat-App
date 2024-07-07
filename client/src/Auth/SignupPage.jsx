@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {Link,useNavigate} from 'react-router-dom';
 import axiosInstance from './axiosConfig';
+import { resetToken } from '../Chat/socket';
 
 export default function SignUpPage({setLoggedIn}) {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export default function SignUpPage({setLoggedIn}) {
 
       if (response.status === 200) {
         localStorage.setItem("username",username)
+        resetToken()
         // setLoggedIn(true)
         navigate('/');
       } else {

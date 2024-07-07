@@ -9,6 +9,33 @@ const hoverTransitionClassName = ' transition-transform duration-200 hover:-tran
 
 export default function ContactsContainer({openConversation, conversations}) {
 
+  const getFileDisplayType = (fileType) => {
+    switch (fileType) {
+      case 'application/pdf':
+        return 'PDF'
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        return 'docx'
+      case 'application/vnd.oasis.opendocument.text':
+        return 'odt'
+      default:
+        return fileType;
+    }
+  }
+
+  const formatLastMessage = ( conversationElement) => {
+    // console.log(conversationElement)
+    if(conversationElement.file_type!=null){
+      return getFileDisplayType(conversationElement.file_type)
+    }
+
+    if(conversationElement.last_message?.length > 10){
+      return `${conversationElement.last_message.substring(0, 10)}...`
+    }
+
+    return conversationElement.last_message
+
+  }
+
   return (
     <div id='contacts-container' className='overflow-y-auto flex flex-col gap-2 h-[80%] mt-12'>
       {conversations.map((conversationElement) => {
@@ -22,7 +49,11 @@ export default function ContactsContainer({openConversation, conversations}) {
                   <span>{(conversationElement.hasOwnProperty('online') ? (conversationElement.online ? 'online' : 'offline') : '')}</span>
                 </div>
 
-                <span className=''>{(!!conversationElement.last_message && conversationElement.last_message.length) <= 10 ? conversationElement.last_message : conversationElement.last_message.substring(0, 10) + '...'}</span>
+                <span className=''>
+                  { formatLastMessage(conversationElement)
+                  }
+                </span>
+                
               </div>
               {conversationElement.unread > 0 &&
                 <div className='col-span-1 flex items-center text-center'>{`${conversationElement.unread} unread message` + (conversationElement.unread == 1 ? '' : 's')}</div>}
