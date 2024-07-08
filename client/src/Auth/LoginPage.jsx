@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link,useNavigate } from 'react-router-dom'
 import axiosInstance from './axiosConfig';
 import { resetToken } from '../Chat/socket';
+import swal from 'sweetalert';
 
 
 function LoginPage({setLoggedIn}) {
@@ -27,9 +28,10 @@ function LoginPage({setLoggedIn}) {
         // setLoggedIn(true);
         navigate('/');
       } else {
-        console.error('Login failed');
+        swal("Login failed", "Please verify your input, make sure you're only use alphanumeric characters and no spaces or special characters for the username", "error")
       }
     } catch (error) {
+      swal("Login failed", "Please verify your input, make sure you're only use alphanumeric characters and no spaces or special characters for the username", "error")
       console.error('API call error:', error);
     }
   }

@@ -12,6 +12,7 @@ import multer from 'multer'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { loginSchema, signupSchema } from './joiSchemas.js'
 
 // Database entities
 import { db, createDataBaseConnection } from '../db/dbconfig.js'
@@ -47,7 +48,7 @@ const API = apiRouter
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_PROFILE_PICTURE_PATH = path.join(__dirname,'..', 'public', 'images', 'default_profile_picture.png')
+const DEFAULT_PROFILE_PICTURE_PATH = path.join(__dirname, '..', 'public', 'images', 'default_profile_picture.png')
 const DEFAULT_PROFILE_PICTURE = fs.readFileSync(DEFAULT_PROFILE_PICTURE_PATH);
 
 API.get('/hello', (req, res) => {
@@ -59,15 +60,23 @@ API.get('/protected', verifyJWTMiddleware, (req, res) => {
 })
 
 API.post('/signup', async (req, res) => {
-  let { username, display_name, password } = req.body
+  // Validate the input
+  const { error, value } = signupSchema.validate(req.body);
+  
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
 
-  if (display_name == null)
-    display_name = username
+  let { username, display_name, password } = value;
+
+  if (!display_name || display_name.trim() === '') {
+    display_name = username;
+  }
 
   try {
-    const salt = await bcrypt.genSalt(10)
-    const password_hash = await bcrypt.hash(password, salt)
-    await User.create({ username, display_name, password_hash })
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(password, salt);
+    await User.create({ username, display_name, password_hash });
 
     jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' }, (err, token) => {
       if (err) {
@@ -75,27 +84,34 @@ API.post('/signup', async (req, res) => {
         return res.status(500).json({ error: 'Error signing JWT token' });
       }
 
-      res.cookie('token', token, { sameSite: 'none', secure: true }).status(200).json({ username })
-    })
+      res.cookie('token', token, { sameSite: 'none', secure: true }).status(200).json({ username });
+    });
 
   } catch (error) {
-    res.status(500).json('Error during signup')
-    console.log('Error during signup', error)
+    res.status(500).json({ error: 'Error during signup' });
+    console.log('Error during signup', error);
   }
-})
+});
 
 API.post('/login', async (req, res) => {
-  const { username, password } = req.body
+  // Validate the input
+  const { error, value } = loginSchema.validate(req.body);
+  
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+
+  const { username, password } = value;
 
   try {
-    const queriedUser = await User.findByPk(username)
+    const queriedUser = await User.findByPk(username);
     if (!queriedUser) {
-      return res.status(401).json({ error: 'Invalid username or password' })
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    const correctPassword = await bcrypt.compare(password, queriedUser.password_hash)
+    const correctPassword = await bcrypt.compare(password, queriedUser.password_hash);
     if (!correctPassword) {
-      return res.status(401).json({ error: 'Invalid username or password' })
+      return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     jwt.sign({ username }, JWT_SECRET, { expiresIn: '30d' }, (err, token) => {
@@ -105,14 +121,15 @@ API.post('/login', async (req, res) => {
       }
 
       const expirationDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days in milliseconds
-      res.cookie('token', token, { expires: expirationDate, sameSite: 'none', secure: true }).status(200).json({ username })
-    })
+      res.cookie('token', token, { expires: expirationDate, sameSite: 'none', secure: true }).status(200).json({ username });
+    });
 
   } catch (error) {
-    res.status(500).json({ error: 'Error during login' })
-    console.log('Error during login', error)
+    res.status(500).json({ error: 'Error during login' });
+    console.log('Error during login', error);
   }
-})
+});
+
 //TODO remove, debug only
 API.get('/users', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
@@ -195,64 +212,71 @@ API.get('/conversations', verifyJWTMiddleware, async (req, res) => {
     const [users, usersMeta] = await db.query({
       query: `
       SELECT 
-      u.display_name, 
-      u.username, 
-      (
-        SELECT 
-          COUNT(*) 
-        FROM 
-          message m 
-        WHERE 
-          m.receiver = ?
-          AND m.time_sent > (
-            SELECT 
-              il.last_checked 
-            FROM 
-              interactionlog il 
-            WHERE 
-              il.conversation_with = u.username 
-              AND il.participant = ?
-          )
-      ) AS unread, 
-      (
-        SELECT 
-          m2.\`text\` 
-        FROM 
-          message m2 
-        WHERE 
-          (
-            m2.sender = u.username 
-            AND m2.receiver = ?
-          ) 
-          OR (
-            m2.sender = ? 
-            AND m2.receiver = u.username
-          ) 
-        ORDER BY 
-          m2.time_sent DESC 
-        LIMIT 
-          1
-      ) AS last_message 
-    FROM user u 
+  u.display_name, 
+  u.username, 
+  (
+    SELECT 
+      COUNT(*) 
+    FROM 
+      message m 
     WHERE 
-      u.username IN (
-        SELECT 
-          il.participant AS username 
-        FROM 
-          interactionlog il 
-        WHERE 
-          il.conversation_with = ? 
-        UNION 
-        SELECT 
-          il2.conversation_with AS username 
-        FROM 
-          interactionlog il2 
-        WHERE 
-          il2.participant = ?
+      m.receiver = ?
+      AND m.sender = u.username
+      AND m.time_sent > COALESCE(
+        (
+          SELECT 
+            il.last_checked 
+          FROM 
+            interactionlog il 
+          WHERE 
+            il.conversation_with = u.username 
+            AND il.participant = ?
+          ORDER BY
+            il.last_checked DESC
+          LIMIT 1
+        ),
+        '1970-01-01'
+      )
+  ) AS unread, 
+  (
+    SELECT 
+      m2.\`text\` 
+    FROM 
+      message m2 
+    WHERE 
+      (
+        m2.sender = u.username 
+        AND m2.receiver = ?
       ) 
-    GROUP BY 
-      u.display_name, 
-      u.username;
+      OR (
+        m2.sender = ? 
+        AND m2.receiver = u.username
+      ) 
+    ORDER BY 
+      m2.time_sent DESC 
+    LIMIT 
+      1
+  ) AS last_message 
+FROM user u 
+WHERE 
+  u.username IN (
+    SELECT 
+      il.conversation_with AS username 
+    FROM 
+      interactionlog il 
+    WHERE 
+      il.participant = ? 
+    UNION 
+    SELECT 
+      il2.participant AS username 
+    FROM 
+      interactionlog il2 
+    WHERE 
+      il2.conversation_with = ?
+  ) 
+GROUP BY 
+  u.display_name, 
+  u.username;
     
   `, values: [username, username, username, username, username, username]
     })
@@ -272,45 +296,38 @@ API.get('/conversations', verifyJWTMiddleware, async (req, res) => {
       query:
         `
         SELECT 
-        g.group_name, 
-        g.group_id, 
-        COUNT(m.time_sent) AS unread, 
-        (
-          SELECT 
-            \`text\` 
-          FROM 
-            message 
-          WHERE 
-            receiver = g.group_id
-          ORDER BY 
-            time_sent DESC 
-          LIMIT 
-            1
-        ) AS last_message 
-      FROM 
-        \`group\` g 
-        LEFT JOIN message m ON m.receiver = g.group_id 
-        AND m.time_sent > (
-          SELECT 
-            last_checked 
-          FROM 
-            groupmembership 
-          WHERE 
-            participant = ?
-          LIMIT 1
-        ) 
-      WHERE 
-        g.group_id IN (
-          SELECT 
-            group_id 
-          FROM 
-            groupmembership gm 
-          WHERE 
-            gm.participant = ?
-        ) 
-      GROUP BY 
-        g.group_name, 
-        g.group_id;
+  g.group_name, 
+  g.group_id, 
+  COUNT(m.id) AS unread, 
+  (
+    SELECT 
+      \`text\` 
+    FROM 
+      message 
+    WHERE 
+      receiver = g.group_id
+    ORDER BY 
+      time_sent DESC 
+    LIMIT 
+      1
+  ) AS last_message 
+FROM 
+  \`group\` g 
+  LEFT JOIN groupmembership gm ON g.group_id = gm.group_id AND gm.participant = ?
+  LEFT JOIN message m ON m.receiver = g.group_id 
+    AND m.time_sent > COALESCE(gm.last_checked, '1970-01-01')
+WHERE 
+  g.group_id IN (
+    SELECT 
+      group_id 
+    FROM 
+      groupmembership gm 
+    WHERE 
+      gm.participant = ?
+  ) 
+GROUP BY 
+  g.group_name, 
+  g.group_id;
 
       `, values: [username, username]
     })
@@ -336,15 +353,16 @@ API.get('/conversations', verifyJWTMiddleware, async (req, res) => {
 
 API.get('/messages/:type/:with', verifyJWTMiddleware, async (req, res) => {
   const username = req.verified.username
-  const {with: conversation_with, type} = req.params
+  const { with: conversation_with, type } = req.params
 
   console.log(conversation_with)
   if (conversation_with == null)
     res.status(400).send("Provide a username or group id")
   try {
 
-    if(type == 'user'){
-      const messages = await db.query({query:`
+    if (type == 'user') {
+      const messages = await db.query({
+        query: `
         SELECT m.id, m.sender, m.receiver, m.text, m.time_sent, a.file_type, a.file_path, a.original_name
         FROM Message m
         LEFT JOIN Attachment a
@@ -353,21 +371,24 @@ API.get('/messages/:type/:with', verifyJWTMiddleware, async (req, res) => {
         (m.sender = ? AND m.receiver = ?) 
         OR 
         (m.sender = ? AND m.receiver = ?) );
-        `,values:[username, conversation_with, conversation_with, username]});
-        res.status(200).json(messages[0])
-        return
+        `, values: [username, conversation_with, conversation_with, username]
+      });
+      res.status(200).json(messages[0])
+      return
     }
 
-    const messages = await db.query({query:`
+    const messages = await db.query({
+      query: `
       SELECT m.id, m.sender, m.receiver, m.text, m.time_sent, a.file_type, a.file_path, a.original_name
       FROM Message m
       LEFT JOIN Attachment a
       ON m.id = a.attachment_id
       WHERE (m.receiver = ?);
-      `,values:[conversation_with]});
-      res.status(200).json(messages[0])
+      `, values: [conversation_with]
+    });
+    res.status(200).json(messages[0])
 
-    
+
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' })
     console.log('Error at put/interaction', error)
@@ -621,7 +642,7 @@ API.put('/display_name', verifyJWTMiddleware, async (req, res) => {
   }
 });
 
-API.get('/display_name/:username', async (req, res) => {
+API.get('/display_name/:username', verifyJWTMiddleware, async (req, res) => {
   try {
 
     const username = req.params.username
@@ -636,14 +657,14 @@ API.get('/display_name/:username', async (req, res) => {
   }
 });
 
-API.get('/picture/:attachment_uuid', async (req, res) => {
+API.get('/picture/:attachment_uuid', verifyJWTMiddleware, async (req, res) => {
   try {
     const attachment_uuid = req.params.attachment_uuid
 
     const attachment = await Attachment.findByPk(attachment_uuid);
     const ATTACHMENTS_PATH = path.join(__dirname, '..', 'public', 'attachments')
 
-    switch(attachment.file_type) {
+    switch (attachment.file_type) {
       case 'img':
         res.setHeader('Content-Type', 'image/jpeg');
         break;
@@ -654,7 +675,7 @@ API.get('/picture/:attachment_uuid', async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
         break;
       default:
-        // code block
+      // code block
     }
 
     var user = await User.findOne({ where: { username } });
@@ -666,11 +687,11 @@ API.get('/picture/:attachment_uuid', async (req, res) => {
 
     return res.status(200).send(user.profile_picture);
 
-    fs.readFile(ATTACHMENTS_PATH+`/${attachment_uuid}`, (err, data)=>{
-      return res.status(200).send(data);
-    })
+    // fs.readFile(ATTACHMENTS_PATH + `/${attachment_uuid}`, (err, data) => {
+    //   return res.status(200).send(data);
+    // })
 
-    
+
 
     // return res.status(200).send(file);
   } catch (error) {
@@ -679,13 +700,13 @@ API.get('/picture/:attachment_uuid', async (req, res) => {
   }
 });
 
-API.get('/download/:attachment_uuid', async (req, res) => {
+API.get('/download/:attachment_uuid', verifyJWTMiddleware, async (req, res) => {
   try {
     const attachment_uuid = req.params.attachment_uuid
 
     const ATTACHMENTS_PATH = path.join(__dirname, '..', 'public', 'attachments')
 
-    return res.status(200).sendFile((ATTACHMENTS_PATH+`/${attachment_uuid}`));
+    return res.status(200).sendFile((ATTACHMENTS_PATH + `/${attachment_uuid}`));
 
   } catch (error) {
     console.error(error);
@@ -694,7 +715,7 @@ API.get('/download/:attachment_uuid', async (req, res) => {
 });
 
 
-API.post('/logout', async (req,res) => {
+API.post('/logout', async (req, res) => {
   try {
     return res.clearCookie('token').status(200).json('OK')
   } catch (error) {
@@ -703,8 +724,8 @@ API.post('/logout', async (req,res) => {
   }
 })
 
-API.get('/status/:user', async (req,res) => {
-  const {user} = req.params
+API.get('/status/:user', verifyJWTMiddleware,async (req, res) => {
+  const { user } = req.params
   try {
     res.status(200).json(ONLINE_USERS.online(user))
   } catch (error) {

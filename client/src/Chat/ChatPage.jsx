@@ -25,9 +25,10 @@ export default function ChatPage({ setLoggedIn }) {
   const [reloadImage, setReloadImage] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
   const [navbar, setNavBar] = useState(false)
-  const [mobileVersion, setMobileVersion] = useState(false)
+  const [mobileVersion, setMobileVersion] = useState(0)
   const [currentModal, setCurrentModal] = useState(0)
   const [imageSource, setImageSource] = useState(null)
+  const MOBILE_PX_THRESHOLD = 1102
 
 
   /*** Socket handling ***/
@@ -41,80 +42,68 @@ export default function ChatPage({ setLoggedIn }) {
 
     function onDisconnect() {
       console.log("disconnected")
-      // if(localStorage.getItem(''))
-      // navigate('/login')
       setIsConnected(false)
     }
 
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
 
-    function receiveMessage(messageObj) {
-      console.log('received message')
-
-      var { sender, receiver, room_id, text, type, time_sent, file_type, file_path, original_name } = messageObj
-      console.log(`room id ${room_id} and selectedConv ${selectedConversation.current.id}`)
-
-      if (type == 'user')
-        room_id = sender
-
-      if (room_id == selectedConversation.current.id) {
-        //In conversation
-        setMessages(oldMessages => {
-          const newMessages = [...oldMessages]
-          newMessages.push(messageObj)
-          console.log(messageObj)
-          return newMessages
-        })
-        return
+    async function receiveMessage(messageObj) {
+      const { sender, receiver, room_id, text, type, time_sent, file_type, file_path, original_name } = messageObj;
+    
+      const effectiveRoomId = type === 'user' ? sender : room_id;
+    
+      // Update messages if we're in the conversation
+      if (effectiveRoomId === selectedConversation.current.id) {
+        setMessages(oldMessages => [...oldMessages, messageObj]);
+        console.log(messageObj);
       }
-
+    
+      // Always update the conversations list
       setConversations(oldValue => {
-
-        const newValue = [...oldValue]
-
-        var found = false
-        newValue.forEach(conversationElement => {
-          if (conversationElement.id == sender)
-            found = true
-        })
-
-        //check if the conversation/group was in the navbar before
+        const newValue = [...oldValue];
+    
+        const found = newValue.some(conversationElement => conversationElement.id === effectiveRoomId);
+    
+        // Check if the conversation/group was in the navbar before
         if (!found) {
-          axiosInstance.get(`display_name/${sender}`).then(response => {
-            //TODO review this
-            setConversations(oldConvos => {
-              const newConvos = [...oldConvos]
-              return newConvos.map(convo => {
-                if (convo.id == sender) {
-                  convo.display_name = response.data
-                }
-                return convo
-              })
-            })
-          })
           newValue.push({
-            id: sender,
+            id: effectiveRoomId,
             type,
-            display_name: sender,
+            display_name: effectiveRoomId,
             last_message: text,
-            unread: 1,
-            online: true
-          })
+            unread: effectiveRoomId === selectedConversation.current.id ? 0 : 1,
+            online: type === 'user' ? true : undefined
+          });
+    
+          // Use IIFE to handle async operation
+          (async () => {
+            try {
+              const response = await axiosInstance.get(`display_name/${effectiveRoomId}`);
+              setConversations(oldConvos => 
+                oldConvos.map(convo => 
+                  convo.id === effectiveRoomId ? { ...convo, display_name: response.data } : convo
+                )
+              );
+            } catch (error) {
+              console.error('Error fetching display name:', error);
+            }
+          })();
         }
-
+    
         return newValue.map(conversation => {
-          if ( (type == 'user' && conversation.id === sender) || (conversation.id === receiver) ) {
-              return { ...conversation, unread: conversation.unread == 0 ? 1 : conversation.unread++, last_message: text };
+          if (conversation.id === effectiveRoomId) {
+            return { 
+              ...conversation, 
+              unread: effectiveRoomId === selectedConversation.current.id 
+                ? conversation.unread 
+                : conversation.unread + 1, 
+              last_message: text 
+            };
           }
-
           return conversation;
         });
       });
-
-
-
-
     }
 
     function onFriendConnected({ friend_username }) {
@@ -171,9 +160,6 @@ export default function ChatPage({ setLoggedIn }) {
 
       socket.off('receive-message', receiveMessage)
       socket.off('failed-token', failedToken)
-      // if(selectedConversation.current.id!=null){
-      //   socket.emit('left-conversation', {conversation_id:selectedConversation.current.id, type: selectedConversation.current.type})
-      // }
     }
   }, [])
 
@@ -205,6 +191,14 @@ export default function ChatPage({ setLoggedIn }) {
     }
   })
 
+  const resetCurrentConversation = () => {
+
+    handleUpdateInteractions()
+
+    selectedConversation.current = { id: null }
+    setInConversationWith(null)
+  }
+
   /*** Utils end ***/
 
 
@@ -214,27 +208,23 @@ export default function ChatPage({ setLoggedIn }) {
 
     const messagesContainer = document.getElementById('messages-container')
     const navbar = document.getElementById('navbar')
-    if (window.innerWidth < 768) {
-      //TODO exit current conversation, update selectedConversation, inConversationWith etc
-      messagesContainer.style.display = 'none'
-      navbar.style.display = 'block'
-      setMobileVersion(true)
+    if (window.innerWidth < MOBILE_PX_THRESHOLD) {
+      resetCurrentConversation()
+      setMobileVersion(1)
       return
     }
 
-
-    setMobileVersion(false)
-    messagesContainer.style.display = 'block'
-    navbar.style.display = 'block'
+    setMobileVersion(0)
   }
 
   useEffect(() => {
     getConversationsFromAPI()
     getOwnDisplayName()
     window.addEventListener('resize', handleResize)
-    // const data = await getConversationsFromAPI()
-    // console.log(data)
-    // setConversations(data)
+
+    if (window.innerWidth < MOBILE_PX_THRESHOLD) {
+      setMobileVersion(1)
+    }
 
     return () => {
       window.removeEventListener('resize', handleResize)
@@ -255,7 +245,11 @@ export default function ChatPage({ setLoggedIn }) {
   const getConversationsFromAPI = async () => {
     const response = await axiosInstance.get('/conversations')
     const data = await response.data
-    setConversations(data)
+    //TODO check layout
+    //debug
+    const newss = [...data, ...data, ...data]
+    setConversations(newss)
+    // setConversations(data)
     console.log(data)
     data.forEach(conversationElement => {
       // console.log(conversationElement)
@@ -264,6 +258,16 @@ export default function ChatPage({ setLoggedIn }) {
       }
     })
     // return data
+  }
+
+  const handleUpdateInteractions = () => {
+    if (selectedConversation.current.id != null) {
+      if (selectedConversation.current.type === "user") {
+        updateInteractions(selectedConversation.current.id)
+      } else {//GROUP
+        updateGroupInteraction(selectedConversation.current.id)
+      }
+    }
   }
 
   const updateInteractions = async (conversationId) => {
@@ -280,7 +284,7 @@ export default function ChatPage({ setLoggedIn }) {
     return data
   }
 
-  const openConversation = async (conversationId, conversationType) => {
+  const openConversation = async (conversationId, conversationType, displayName) => {
     switchMenuAndMessageView()
     Modals.closeModal()
 
@@ -295,24 +299,14 @@ export default function ChatPage({ setLoggedIn }) {
     }
 
     //For *previous* conversation : Update group or user interactions
-    if (selectedConversation.current.id != null) {
-      if (selectedConversation.current.type === "user") {
-        updateInteractions(selectedConversation.current.id)
-      } else {//GROUP
-        updateGroupInteraction(selectedConversation.current.id)
-      }
-    }
+    handleUpdateInteractions()
 
     //Update state and reference variables
-    selectedConversation.current = { id: conversationId, type: conversationType, room_id: conversationId }
+    selectedConversation.current = { id: conversationId, type: conversationType, room_id: conversationId, display_name: displayName }
     setInConversationWith(conversationId)
 
     //For *current* conversation : Update group or user interactions
-    if (conversationType === "user") {
-      updateInteractions(selectedConversation.current.id)
-    } else {//GROUP
-      updateGroupInteraction(selectedConversation.current.id)
-    }
+    handleUpdateInteractions()
 
     //Check if conversation is in the contacts container
     var found = false
@@ -390,26 +384,21 @@ export default function ChatPage({ setLoggedIn }) {
     document.getElementById('navbar').classList.toggle('hidden')
   }
 
-  //TODO update
   const switchMenuAndMessageView = () => {
-    const backButton = document.getElementById('back-button')
-    const backButtonStyle = window.getComputedStyle(backButton)
 
-    if (backButtonStyle.display == 'none')
-      return
-
-    const messagesContainer = document.getElementById('messages-container')
-    const navbar = document.getElementById('navbar')
-
-    const navBarStyle = window.getComputedStyle(navbar)
-
-    if (navBarStyle.display == 'none') {
-      navbar.style.display = 'inline-block'
-      messagesContainer.style.display = 'none'
-    } else {
-      navbar.style.display = 'none'
-      messagesContainer.style.display = 'inline-block'
+    switch (mobileVersion) {
+      case 1://Swtich from contacts view to messages
+        setMobileVersion(2)
+        break;
+      case 2://Swtich from messages view to contacts
+        setMobileVersion(1)
+        resetCurrentConversation()
+        break;
+    
+      default:
+        break;
     }
+
   }
 
   /*** Modal and button handling end ***/
@@ -436,6 +425,7 @@ export default function ChatPage({ setLoggedIn }) {
         conversations={conversations}
         username={username}
         navigate={navigate}
+        mobileVersion={mobileVersion}
         displayName={displayName}
         openNewConversationsModal={() => Modals.openModal(Modals.NewConversationModal)}
       />
@@ -447,6 +437,7 @@ export default function ChatPage({ setLoggedIn }) {
         openGroupOptionsModal={() => Modals.openModal(Modals.GroupOptionsModal)}
         sendButtonRef={sendButtonRef}
         mobileVersion={mobileVersion}
+        setMobileVersion={setMobileVersion}
         selectedConversation={selectedConversation}
         username={username}
         socketRef={socketRef}

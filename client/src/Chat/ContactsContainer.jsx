@@ -37,11 +37,11 @@ export default function ContactsContainer({openConversation, conversations}) {
   }
 
   return (
-    <div id='contacts-container' className='overflow-y-auto flex flex-col gap-2 h-[80%] mt-12'>
+    <div id='contacts-container' className='grid gap-2 mt-4'>
       {conversations.map((conversationElement) => {
         return (
           <div key={conversationElement.id}>
-            <div className={'grid grid-cols-4 pl-2' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type)}>
+            <div className={'grid grid-cols-4 pl-2' + hoverTransitionClassName} onClick={() => openConversation(conversationElement.id, conversationElement.type, conversationElement.display_name)}>
               <img className='bg-green-400 rounded-lg col-span-1 size-16' src={(conversationElement.type == 'user' ? USER_PFP_BASE_URL : GROUP_PIC_BASE_URL) + `/${conversationElement.id}`} id={"img-" + conversationElement.id} />
               <div className='ml-4 pl-4 pt-4 pb-4 col-span-2 grid grid-rows-2 bg-blue-100 rounded-lg '>
                 <div>

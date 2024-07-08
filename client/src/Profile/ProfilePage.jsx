@@ -88,16 +88,16 @@ export default function ProfilePage({setLoggedIn}) {
   }
 
   return (
-    <div className="grid grid-cols-2 grid-rows-1 gap-x-12 gap-y-0 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ">
-      <img className="bg-blue-400 rounded-xl" src={`${USER_PFP_BASE_URL}/${username}?${reloadImage ? 'reload=' + Date.now() : ''}`} />
+    <div className="flex flex-col md:grid md:grid-cols-2 md:grid-rows-1 md:gap-x-12 md:gap-y-0 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ">
+      <img className="bg-blue-400 rounded-xl mb-10 md:mb-0" src={`${USER_PFP_BASE_URL}/${username}?${reloadImage ? 'reload=' + Date.now() : ''}`} />
       <div className="grid grid-cols-1 grid-rows-7 gap-x-0 gap-y-6">
         <input type="file" accept="image/*" onChange={handleFileChange}/>
-        <button className='bg-blue-200' onClick={handleSubmit}>Update profile picture</button>
-        <button className='bg-blue-200' onClick={handleDelete}>Delete profile picture</button>
+        <button className='bg-blue-200 rounded-lg' onClick={handleSubmit}>Update profile picture</button>
+        <button className='bg-blue-200 rounded-lg' onClick={handleDelete}>Delete profile picture</button>
         <p>Current display name : {displayName}</p>
         <input placeholder='Enter a new display name' value={newDisplayName} onChange={(e) => setNewDisplayName(e.target.value)}></input>
-        <button className='bg-blue-200' onClick={updateDisplayName}>Update display name</button>
-        <Link className='bg-blue-200 flex justify-center items-center h-full' to={'/'}>Back to chat</Link>
+        <button className='bg-blue-200 rounded-lg' onClick={updateDisplayName}>Update display name</button>
+        <Link className='bg-blue-200 rounded-lg flex justify-center items-center h-full' to={'/'}>Back to chat</Link>
       </div>
     </div>
   )

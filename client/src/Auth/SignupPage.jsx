@@ -27,9 +27,11 @@ export default function SignUpPage({setLoggedIn}) {
         navigate('/');
       } else {
         console.error('Login failed');
+        swal("Login failed", "Please verify your input, make sure you're only use alphanumeric characters and no spaces or special characters for the username", "error")
       }
     } catch (error) {
       console.error('API call error:', error);
+      swal("Login failed", "Please verify your input, make sure you're only use alphanumeric characters and no spaces or special characters for the username", "error")
     }
   }
 
